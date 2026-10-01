@@ -1,0 +1,55 @@
+{
+  "extends": ["next/core-web-vitals"],
+  "rules": {
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "Literal[value=/#([0-9a-fA-F]{3,8})/]",
+        "message": "Raw hex colors are prohibited outside styles/tokens.ts. Use design tokens or CSS variables."
+      },
+      {
+        "selector": "Literal[value=/\\b(p|m|gap|w|h|rounded|text|bg|border)-\\[[^\\]]+\\]/]",
+        "message": "Arbitrary Tailwind values like p-[13px] or bg-[#fff] are prohibited. Use design token scale."
+      },
+      {
+        "selector": "JSXAttribute[name.name='style'] Property[key.name=/^(color|backgroundColor|borderColor|fontSize|padding|margin|borderRadius)$/]",
+        "message": "Inline style colors and sizes are prohibited. Map attributes are allowed in lib/terrain/ only."
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "styles/tokens.ts",
+        "styles/tokens.js",
+        "app/styleguide/**",
+        "app/page.tsx",
+        "app/(marketing)/**",
+        "components/datum-app.tsx",
+        "components/header-plane-animation.tsx",
+        "lib/groq.ts"
+      ],
+      "rules": {
+        "no-restricted-syntax": "off"
+      }
+    },
+    {
+      "files": ["lib/terrain/**", "components/terrain/**", "components/ui/ValueCompare.tsx"],
+      "rules": {
+        "no-restricted-syntax": [
+          "error",
+          {
+            "selector": "Literal[value=/\\b(p|m|gap|w|h|rounded|text|bg|border)-\\[[^\\]]+\\]/]",
+            "message": "Arbitrary Tailwind values are prohibited."
+          }
+        ]
+      }
+    },
+    {
+      "files": ["tests/**", "**/*.test.ts", "**/*.test.tsx"],
+      "rules": {
+        "no-restricted-syntax": "off"
+      }
+    }
+  ]
+}
