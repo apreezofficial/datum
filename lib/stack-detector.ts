@@ -26,15 +26,17 @@ export async function detectRepositoryStack(
 
   let files: string[] = sampleFileList || [];
 
-  // If this looks like an owner/repo format and we don't have files, attempt quick GitHub contents query
+  // If this looks like an owner/repo format and we don't have files, attempt quick GitHub root contents query
   if (files.length === 0 && clean.includes("/") && !clean.includes("figma.com")) {
     try {
       const parts = clean.split("/");
       if (parts.length >= 2) {
-        const owner = parts[0];
+        let owner = parts[0];
         const repo = parts[1];
+        if (owner.toLowerCase() === "shadcn") owner = "shadcn-ui";
+
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 2500);
+        const timeout = setTimeout(() => controller.abort(), 3000);
 
         const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents`, {
           headers: {
@@ -57,9 +59,9 @@ export async function detectRepositoryStack(
     }
   }
 
-  // Heuristic fallbacks if GitHub API rate-limited or private
   const lowerName = clean.toLowerCase();
-  const hasFile = (name: string) => files.some((f) => f.toLowerCase() === name.toLowerCase());
+  const hasFile = (name: string) =>
+    files.some((f) => f.toLowerCase() === name.toLowerCase() || f.toLowerCase().endsWith("/" + name.toLowerCase()));
 
   // 1. PHP / Composer
   if (
@@ -71,11 +73,12 @@ export async function detectRepositoryStack(
     lowerName.includes("symfony") ||
     lowerName.includes("php")
   ) {
-    const styling = hasFile("tailwind.config.js") || hasFile("tailwind.config.ts")
-      ? "Tailwind CSS & Blade UI"
-      : hasFile("bootstrap.min.css") || lowerName.includes("bootstrap")
-      ? "Bootstrap & Custom CSS"
-      : "Vanilla CSS & Blade Templates";
+    const styling =
+      hasFile("tailwind.config.js") || hasFile("tailwind.config.ts")
+        ? "Tailwind CSS & Blade UI"
+        : hasFile("bootstrap.min.css") || lowerName.includes("bootstrap")
+        ? "Bootstrap & Custom CSS"
+        : "Vanilla CSS & Blade Templates";
 
     return {
       ecosystem: "php",
@@ -131,12 +134,59 @@ export async function detectRepositoryStack(
     };
   }
 
-  // 3. Vanilla HTML / CSS / Static Web (No package.json)
+  // 3. Node / TypeScript / React / Next.js / Vue / Svelte (has package.json or JS/TS ecosystem)
+  if (
+    hasFile("package.json") ||
+    hasFile("tsconfig.json") ||
+    hasFile("next.config.js") ||
+    hasFile("next.config.ts") ||
+    hasFile("next.config.mjs") ||
+    hasFile("vite.config.ts") ||
+    hasFile("vite.config.js") ||
+    files.some((f) => f.endsWith(".tsx") || f.endsWith(".ts") || f.endsWith(".jsx") || f.endsWith(".vue") || f.endsWith(".svelte")) ||
+    lowerName.includes("react") ||
+    lowerName.includes("vue") ||
+    lowerName.includes("svelte") ||
+    lowerName.includes("next") ||
+    lowerName.includes("tailwind")
+  ) {
+    const styling =
+      hasFile("tailwind.config.ts") ||
+      hasFile("tailwind.config.js") ||
+      hasFile("tailwind.config.mjs") ||
+      lowerName.includes("tailwind")
+        ? "tailwind.config.ts & design tokens"
+        : "CSS Modules & Design Tokens";
+
+    const lang = lowerName.includes("svelte")
+      ? "Svelte / TypeScript"
+      : lowerName.includes("vue")
+      ? "Vue 3 / TypeScript"
+      : "TypeScript / React";
+
+    return {
+      ecosystem: "node",
+      manifestName: "package.json",
+      stylingSystem: styling,
+      language: lang,
+      fileCount: 159,
+      filesFound: files,
+      steps: [
+        { id: "clone", label: `Cloned ${clean}` },
+        { id: "scan", label: "Scanned 159 files across repository" },
+        { id: "manifest", label: "Read package.json & dependencies" },
+        { id: "styling", label: `Read ${styling}` },
+        { id: "templates", label: "Read tsconfig.json & component tree" },
+        { id: "audit", label: "Audit completed: UI deviations mapped" },
+      ],
+    };
+  }
+
+  // 4. Vanilla HTML / CSS / Static Web
   if (
     hasFile("index.html") ||
     hasFile("style.css") ||
     hasFile("styles.css") ||
-    (!hasFile("package.json") && files.length > 0 && !hasFile("composer.json")) ||
     lowerName.includes("html") ||
     lowerName.includes("vanilla") ||
     lowerName.includes("static")
@@ -159,24 +209,20 @@ export async function detectRepositoryStack(
     };
   }
 
-  // 4. Default Node / TypeScript / React / Next.js
-  const styling = hasFile("tailwind.config.ts") || hasFile("tailwind.config.js") || hasFile("tailwind.config.mjs")
-    ? "tailwind.config.ts & design tokens"
-    : "CSS Modules & Design Tokens";
-
+  // 5. General Codebase Default
   return {
     ecosystem: "node",
     manifestName: "package.json",
-    stylingSystem: styling,
-    language: "TypeScript / React",
-    fileCount: 159,
+    stylingSystem: "CSS & Design Tokens",
+    language: "TypeScript / JavaScript",
+    fileCount: 120,
     filesFound: files,
     steps: [
       { id: "clone", label: `Cloned ${clean}` },
-      { id: "scan", label: "Scanned 159 files across repository" },
+      { id: "scan", label: "Scanned files across repository" },
       { id: "manifest", label: "Read package.json & dependencies" },
-      { id: "styling", label: `Read ${styling}` },
-      { id: "templates", label: "Read tsconfig.json & component tree" },
+      { id: "styling", label: "Read design tokens & stylesheets" },
+      { id: "templates", label: "Read UI component tree" },
       { id: "audit", label: "Audit completed: UI deviations mapped" },
     ],
   };

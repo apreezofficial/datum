@@ -185,7 +185,9 @@ export function DatumApp() {
     {
       id: "audit",
       icon: <Compass size={14} className="text-secondary" />,
-      label: `Audit completed: ${auditData?.totalDeviations || 38} UI deviations mapped`,
+      label: auditData?.totalDeviations !== undefined
+        ? `Audit completed: ${auditData.totalDeviations} UI deviations mapped`
+        : "Audit completed: UI deviations mapped",
       status: currentStepIndex > 5 ? "done" : currentStepIndex === 5 && isAnalyzing ? "running" : "pending",
     },
   ];

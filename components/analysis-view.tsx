@@ -156,29 +156,8 @@ export function AnalysisView({
 
                 {/* Mismatches List */}
                 <div className="space-y-2 text-xs font-mono">
-                  {(auditData?.deviations && auditData.deviations.length > 0
-                    ? auditData.deviations
-                    : [
-                        {
-                          file: "components/Card.tsx",
-                          line: 42,
-                          currentValue: "p-[13px]",
-                          suggestedToken: "p-3",
-                          suggestedValue: "12px",
-                          delta: "+1px",
-                          confidence: 92,
-                        },
-                        {
-                          file: "app/header.tsx",
-                          line: 18,
-                          currentValue: "#3b82f7",
-                          suggestedToken: "var(--brand-500)",
-                          suggestedValue: "#3b82f6",
-                          delta: "1.4 dE",
-                          confidence: 95,
-                        },
-                      ]
-                  ).map((dev, idx) => (
+                  {auditData?.deviations && auditData.deviations.length > 0 ? (
+                    auditData.deviations.map((dev, idx) => (
                     <div
                       key={idx}
                       className="p-2.5 border border-border-subtle rounded bg-raised/40 flex items-center justify-between gap-2 sm:gap-3"
@@ -204,7 +183,12 @@ export function AnalysisView({
                         </span>
                       </div>
                     </div>
-                  ))}
+                  ))
+                  ) : (
+                    <div className="p-4 border border-border-subtle rounded bg-raised/20 text-center text-xs text-secondary">
+                      No design deviations detected in surveyed component files. Tokens are in full alignment!
+                    </div>
+                  )}
                 </div>
               </div>
 
