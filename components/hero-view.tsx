@@ -55,12 +55,12 @@ export function HeroView({
 
       {/* Clean, perfectly sized title & subtitle */}
       <h1 className="text-2xl font-semibold tracking-tight text-text mb-2">
-        {sourceType === "github" ? "Vibe code with any repository." : "Vibe code with any Figma design."}
+        {sourceType === "github" ? "Analyze your codebase for flaws." : "Analyze your Figma design for flaws."}
       </h1>
       <p className="text-xs sm:text-sm text-secondary max-w-md mb-7 leading-relaxed">
         {sourceType === "github"
-          ? "Paste any GitHub repo. Datum mounts its design system and components so you can vibe code, refactor, and ask anything."
-          : "Paste any Figma file. Datum extracts its tokens and variables so you can generate code in full design parity."}
+          ? "Scan any repository for security vulnerabilities, genuine in-code TODOs, bugs, performance bottlenecks, and architectural defects."
+          : "Audit any Figma design file for token discrepancies, missing variables, accessibility contrasts, and design-to-code alignment."}
       </p>
 
       {/* Pill Search Input with Arrow button */}

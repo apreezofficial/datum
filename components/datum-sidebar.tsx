@@ -92,7 +92,7 @@ export function DatumSidebar({
             className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-normal text-text hover:bg-raised transition-colors whitespace-nowrap"
           >
             <Plus size={15} strokeWidth={1.75} className="text-secondary shrink-0" />
-            <span className="whitespace-nowrap">New workspace</span>
+            <span className="whitespace-nowrap">New analysis</span>
           </button>
         </div>
 
@@ -101,7 +101,7 @@ export function DatumSidebar({
           {history.length > 0 ? (
             <div className="space-y-1">
               <span className="text-[10px] font-mono text-muted uppercase tracking-wider px-2 block mb-2">
-                Recent Codebases
+                Recent Analyses
               </span>
               {history.map((item) => (
                 <button
@@ -129,7 +129,7 @@ export function DatumSidebar({
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center px-4">
               <p className="text-xs text-muted leading-relaxed">
-                Sign in to save and sync your design system surveys.
+                Sign in to save and sync your codebase flaw analyses.
               </p>
             </div>
           )}

@@ -19,7 +19,6 @@ import { DatumSidebar } from "@/components/datum-sidebar";
 import { DatumFooter } from "@/components/datum-footer";
 import { HeroView } from "@/components/hero-view";
 import { AnalysisView } from "@/components/analysis-view";
-import { VibeWorkspace } from "@/components/vibe-workspace";
 
 import type {
   StepItem,
@@ -90,7 +89,6 @@ export function DatumApp() {
   const [sourceType, setSourceType] = React.useState<"github" | "figma">("github");
   const [inputValue, setInputValue] = React.useState("");
   const [activeItem, setActiveItem] = React.useState<string | null>(null);
-  const [workspaceView, setWorkspaceView] = React.useState<"vibe" | "audit">("vibe");
   const [isAnalyzing, setIsAnalyzing] = React.useState(false);
   const [analysisComplete, setAnalysisComplete] = React.useState(false);
   const [stepsExpanded, setStepsExpanded] = React.useState(true);
@@ -332,11 +330,11 @@ export function DatumApp() {
       });
     }
 
-    // STEP 5: Mount into Vibe Workspace
+    // STEP 5: Deep Flaw Analysis (Security, Bugs, Genuine In-Code TODOs, Performance)
     pushStep({
-      id: "mount",
+      id: "flaws",
       icon: <Compass size={14} className="text-secondary" />,
-      label: "Mounting codebase into Vibe Workspace...",
+      label: "Running deep flaw analysis across codebase...",
       status: "running",
     });
 
@@ -360,24 +358,24 @@ export function DatumApp() {
         setAuditData(realData);
         if (realData.stack) setDetectedStack(realData.stack);
         updateLastStep({
-          label: `Mounted ${treeData.allUiFilesCount} files · Ready to vibe code`,
+          label: `Analysis completed: ${realData.totalFindings} flaws mapped · Score ${realData.healthScore}/100`,
           status: "done",
         });
         setHistory((prev) => [
-          { id: Math.random().toString(), name: cleanName, type: "github", summary: `${treeData.allUiFilesCount} files · Ready`, auditData: realData },
+          { id: Math.random().toString(), name: cleanName, type: "github", summary: `${realData.totalFindings} flaws mapped`, auditData: realData },
           ...prev.filter((h) => h.name !== cleanName),
         ]);
       } else {
-        updateLastStep({ label: "Mount completed · Ready to vibe code", status: "done" });
+        updateLastStep({ label: "Analysis completed", status: "done" });
         setHistory((prev) => [
-          { id: Math.random().toString(), name: cleanName, type: "github", summary: "Mounted" },
+          { id: Math.random().toString(), name: cleanName, type: "github", summary: "Audited" },
           ...prev.filter((h) => h.name !== cleanName),
         ]);
       }
     } catch {
-      updateLastStep({ label: "Mounted · Ready to vibe code", status: "done" });
+      updateLastStep({ label: "Analysis completed", status: "done" });
       setHistory((prev) => [
-        { id: Math.random().toString(), name: cleanName, type: "github", summary: "Mounted" },
+        { id: Math.random().toString(), name: cleanName, type: "github", summary: "Audited" },
         ...prev.filter((h) => h.name !== cleanName),
       ]);
     }
@@ -474,8 +472,6 @@ export function DatumApp() {
           onToggleLogin={handleToggleLogin}
           isFigmaConnected={isFigmaConnected}
           onToggleFigmaConnection={handleToggleFigmaConnection}
-          workspaceView={workspaceView}
-          onToggleWorkspaceView={setWorkspaceView}
         />
 
         {/* Content Area */}
@@ -494,16 +490,6 @@ export function DatumApp() {
                 onStartAnalysis={handleStartAnalysis}
               />
             </div>
-          ) : analysisComplete && workspaceView === "vibe" ? (
-            <VibeWorkspace
-              activeItem={activeItem}
-              sourceType={sourceType}
-              treeData={loadedTreeData}
-              detectedStack={detectedStack}
-              activeModel={activeModel}
-              isLoggedIn={isLoggedIn}
-              onReset={resetToNew}
-            />
           ) : (
             <div
               ref={mainScrollRef as React.RefObject<HTMLDivElement>}
