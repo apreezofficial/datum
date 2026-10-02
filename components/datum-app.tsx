@@ -151,45 +151,61 @@ export function DatumApp() {
     }
   }, [currentStepIndex, analysisComplete, criticalApproved, activeItem, scrollToBottom]);
 
-  // GitHub steps with dynamic stack detection
+  // GitHub steps — honest labels that reflect what actually happened
   const githubSteps: StepItem[] = [
     {
       id: "clone",
       icon: <GitBranch size={14} className="text-secondary" />,
-      label: `Cloned ${activeItem || "repository"}`,
+      label: analysisComplete && auditError
+        ? `Could not resolve ${activeItem || "repository"}`
+        : isAnalyzing && currentStepIndex === 0
+        ? `Resolving ${activeItem || "repository"}...`
+        : `Resolved ${activeItem || "repository"}`,
       status: currentStepIndex > 0 ? "done" : currentStepIndex === 0 && isAnalyzing ? "running" : "pending",
     },
     {
       id: "scan",
       icon: <FolderGit2 size={14} className="text-secondary" />,
-      label: `Scanned ${detectedStack?.fileCount || 159} files across repository`,
+      label: analysisComplete && auditError
+        ? "No files fetched — repository inaccessible"
+        : auditData?.totalFilesScanned
+        ? `Fetched ${auditData.totalFilesScanned} UI files for analysis`
+        : isAnalyzing && currentStepIndex === 1
+        ? "Fetching repository files..."
+        : "Fetched repository files",
       status: currentStepIndex > 1 ? "done" : currentStepIndex === 1 && isAnalyzing ? "running" : "pending",
     },
     {
       id: "manifest",
       icon: <Package size={14} className="text-secondary" />,
-      label: detectedStack?.steps[2]?.label || "Read package.json & dependencies",
+      label: detectedStack?.steps[2]?.label
+        || (isAnalyzing && currentStepIndex === 2 ? "Reading package manifest..." : "Read package manifest"),
       status: currentStepIndex > 2 ? "done" : currentStepIndex === 2 && isAnalyzing ? "running" : "pending",
     },
     {
       id: "styling",
       icon: <FileCode size={14} className="text-secondary" />,
-      label: detectedStack?.steps[3]?.label || "Read tailwind.config.ts & design tokens",
+      label: detectedStack?.steps[3]?.label
+        || (isAnalyzing && currentStepIndex === 3 ? "Reading design tokens & stylesheets..." : "Read design tokens & stylesheets"),
       status: currentStepIndex > 3 ? "done" : currentStepIndex === 3 && isAnalyzing ? "running" : "pending",
     },
     {
       id: "structure",
       icon: <FileText size={14} className="text-secondary" />,
-      label: detectedStack?.steps[4]?.label || "Read tsconfig.json & component tree",
+      label: detectedStack?.steps[4]?.label
+        || (isAnalyzing && currentStepIndex === 4 ? "Reading UI component tree..." : "Read UI component tree"),
       status: currentStepIndex > 4 ? "done" : currentStepIndex === 4 && isAnalyzing ? "running" : "pending",
     },
     {
       id: "audit",
       icon: <Compass size={14} className="text-secondary" />,
-      label:
-        auditData?.totalDeviations !== undefined
-          ? `Audit completed: ${auditData.totalDeviations} UI deviations mapped`
-          : "Audit completed: mapping UI deviations...",
+      label: auditError && !auditData
+        ? "Audit failed — repository not found or inaccessible"
+        : auditData?.totalDeviations !== undefined
+        ? `Audit completed: ${auditData.totalDeviations} UI deviation${auditData.totalDeviations === 1 ? "" : "s"} mapped`
+        : isAnalyzing && currentStepIndex === 5
+        ? "Running AI design audit..."
+        : "Running AI design audit...",
       status: currentStepIndex > 5 ? "done" : currentStepIndex === 5 && isAnalyzing ? "running" : "pending",
     },
   ];

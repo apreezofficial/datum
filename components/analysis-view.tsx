@@ -79,12 +79,16 @@ export function AnalysisView({
           <span>
             {isAnalyzing
               ? `Step ${Math.min(currentStepIndex + 1, currentSteps.length)} of ${currentSteps.length} in progress...`
+              : auditError && !auditData
+              ? `${currentSteps.length} steps — audit failed`
               : `${currentSteps.length} steps completed`}
           </span>
           {analysisComplete && (
-            <span className="text-emerald-600 dark:text-emerald-400 font-mono ml-2">
-              ✓ Done
-            </span>
+            auditError && !auditData ? (
+              <span className="text-peak font-mono ml-2">✗ Failed</span>
+            ) : (
+              <span className="text-emerald-600 dark:text-emerald-400 font-mono ml-2">✓ Done</span>
+            )
           )}
         </button>
 
