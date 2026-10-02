@@ -648,25 +648,6 @@ export function DatumApp() {
                   </>
                 )}
               </div>
-
-              {/* Clean Bottom Footer (Matching Image 1) */}
-              <div className="mt-12 flex items-center justify-between w-full max-w-lg px-2 text-xs text-muted font-mono">
-                <span>Datum</span>
-                <div className="flex items-center gap-4">
-                  <span>Free</span>
-                  <span>·</span>
-                  <a
-                    href="https://github.com"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="hover:text-text"
-                  >
-                    GitHub
-                  </a>
-                  <span>·</span>
-                  <span>Built on Datum</span>
-                </div>
-              </div>
             </div>
           ) : (
             /* =================== VIEW 2: STEPS & ANALYSIS (IMAGE 2) =================== */
@@ -1082,6 +1063,25 @@ export function DatumApp() {
             </div>
           )}
         </main>
+
+        {/* Global Bottom Footer (Fixed at footer level, edge-to-edge) */}
+        <footer className="h-10 border-t border-border-subtle/50 px-6 sm:px-8 flex items-center justify-between text-xs text-muted font-mono shrink-0 select-none bg-surface/30">
+          <span>Datum</span>
+          <div className="flex items-center gap-4">
+            <span>Free</span>
+            <span>·</span>
+            <a
+              href="https://github.com/apreezofficial/datum"
+              target="_blank"
+              rel="noreferrer"
+              className="hover:text-text transition-colors"
+            >
+              GitHub
+            </a>
+            <span>·</span>
+            <span>Built on Datum</span>
+          </div>
+        </footer>
       </div>
     </div>
   );
