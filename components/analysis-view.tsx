@@ -123,22 +123,22 @@ export function AnalysisView({
           {sourceType === "github" ? (
             <div className="space-y-6">
               {/* GitHub Report Card */}
-              <div className="border border-border rounded-lg bg-surface p-5 space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-border-subtle">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-sm font-bold text-text">
+              <div className="border border-border rounded-lg bg-surface p-4 sm:p-5 space-y-4">
+                <div className="flex flex-col xs:flex-row xs:items-center justify-between pb-3 border-b border-border-subtle gap-2">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="text-sm font-bold text-text truncate max-w-[220px] sm:max-w-none">
                         Codebase Survey · {activeItem}
                       </h2>
-                      <span className="text-[10px] font-mono bg-tide/10 text-tide px-2 py-0.5 rounded-full">
+                      <span className="text-[10px] font-mono bg-tide/10 text-tide px-2 py-0.5 rounded-full shrink-0">
                         {activeModel.name}
                       </span>
                     </div>
-                    <p className="text-xs text-secondary mt-0.5">
+                    <p className="text-xs text-secondary mt-0.5 line-clamp-2 sm:line-clamp-none">
                       {auditData?.summary || "38 deviations detected across 14 UI files."}
                     </p>
                   </div>
-                  <div className="text-right">
+                  <div className="text-left xs:text-right shrink-0 flex xs:flex-col items-center xs:items-end justify-between xs:justify-start">
                     <span className="text-[10px] text-muted font-mono block">DRIFT SCORE</span>
                     <span
                       className={`text-lg font-bold font-mono ${
@@ -181,25 +181,25 @@ export function AnalysisView({
                   ).map((dev, idx) => (
                     <div
                       key={idx}
-                      className="p-2.5 border border-border-subtle rounded bg-raised/40 flex items-center justify-between gap-3"
+                      className="p-2.5 border border-border-subtle rounded bg-raised/40 flex items-center justify-between gap-2 sm:gap-3"
                     >
-                      <div className="truncate">
-                        <div className="text-[10px] text-muted">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[10px] text-muted truncate">
                           {dev.file}:{dev.line}
                         </div>
-                        <div className="flex items-center gap-2 mt-0.5 truncate">
-                          <span className="text-peak line-through truncate">{dev.currentValue}</span>
-                          <span>→</span>
-                          <span className="text-tide font-medium truncate">
+                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5 text-xs">
+                          <span className="text-peak line-through truncate max-w-[100px] xs:max-w-none">{dev.currentValue}</span>
+                          <span className="text-muted text-[11px]">→</span>
+                          <span className="text-tide font-medium truncate max-w-[160px] xs:max-w-none">
                             {dev.suggestedToken} ({dev.suggestedValue})
                           </span>
                         </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <span className="text-[11px] text-secondary block">
+                      <div className="text-right shrink-0 pl-2">
+                        <span className="text-[11px] text-secondary block whitespace-nowrap">
                           Δ {typeof dev.delta === "number" ? `+${dev.delta}` : dev.delta}
                         </span>
-                        <span className="text-[9px] text-muted font-sans">
+                        <span className="text-[9px] text-muted font-sans whitespace-nowrap">
                           {dev.confidence > 1 ? dev.confidence : Math.round(dev.confidence * 100)}% conf
                         </span>
                       </div>
@@ -233,31 +233,31 @@ export function AnalysisView({
                       </div>
                     </div>
 
-                    <div className="pt-2 border-t border-border-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="pt-2 border-t border-border-subtle">
                       {!isLoggedIn ? (
-                        <div className="flex items-center justify-between w-full">
-                          <span className="text-xs text-secondary">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
+                          <span className="text-xs text-secondary leading-relaxed">
                             Sign in to authorize PR creation.
                           </span>
                           <button
                             type="button"
                             onClick={handleToggleLogin}
-                            className="flex items-center gap-1.5 rounded-md bg-accent text-accent-foreground px-3.5 py-1.5 text-xs font-medium hover:opacity-90"
+                            className="flex items-center justify-center gap-1.5 rounded-md bg-accent text-accent-foreground px-3.5 py-2 sm:py-1.5 text-xs font-medium hover:opacity-90 shrink-0 w-full sm:w-auto"
                           >
                             <Github size={13} />
                             <span>Sign in with GitHub</span>
                           </button>
                         </div>
                       ) : (
-                        <>
-                          <span className="text-xs text-secondary">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
+                          <span className="text-xs text-secondary truncate">
                             Signed in as <b className="text-text">{userProfile?.name}</b>
                           </span>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 w-full sm:w-auto">
                             <button
                               type="button"
                               onClick={() => alert("Action skipped.")}
-                              className="px-3 py-1.5 text-xs text-secondary hover:text-text rounded border border-border bg-surface"
+                              className="flex-1 sm:flex-initial px-3 py-2 sm:py-1.5 text-xs text-secondary hover:text-text rounded border border-border bg-surface text-center"
                             >
                               Decline
                             </button>
@@ -265,7 +265,7 @@ export function AnalysisView({
                               type="button"
                               disabled={isApproving}
                               onClick={handleApproveCriticalStep}
-                              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded bg-accent text-accent-foreground hover:opacity-90"
+                              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2 sm:py-1.5 text-xs font-medium rounded bg-accent text-accent-foreground hover:opacity-90"
                             >
                               {isApproving ? (
                                 <>
@@ -280,7 +280,7 @@ export function AnalysisView({
                               )}
                             </button>
                           </div>
-                        </>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -333,17 +333,17 @@ export function AnalysisView({
             /* ================= FIGMA FLOW RESULTS ================= */
             <div className="space-y-6">
               {/* Figma Report Card */}
-              <div className="border border-border rounded-lg bg-surface p-5 space-y-4">
-                <div className="flex items-center justify-between pb-3 border-b border-border-subtle">
-                  <div>
-                    <h2 className="text-sm font-bold text-text">
+              <div className="border border-border rounded-lg bg-surface p-4 sm:p-5 space-y-4">
+                <div className="flex flex-col xs:flex-row xs:items-center justify-between pb-3 border-b border-border-subtle gap-2">
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-bold text-text truncate max-w-[220px] sm:max-w-none">
                       Figma Token Sync Report · {activeItem}
                     </h2>
-                    <p className="text-xs text-secondary mt-0.5">
+                    <p className="text-xs text-secondary mt-0.5 line-clamp-2 sm:line-clamp-none">
                       12 token discrepancies between Figma file and repository tokens.
                     </p>
                   </div>
-                  <div className="text-right">
+                  <div className="text-left xs:text-right shrink-0 flex xs:flex-col items-center xs:items-end justify-between xs:justify-start">
                     <span className="text-[10px] text-muted font-mono block">STATUS</span>
                     <span className="text-xs font-bold font-mono text-ochre">OUT OF SYNC</span>
                   </div>
@@ -414,31 +414,31 @@ export function AnalysisView({
                       </div>
                     </div>
 
-                    <div className="pt-2 border-t border-border-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="pt-2 border-t border-border-subtle">
                       {!isFigmaConnected ? (
-                        <div className="flex items-center justify-between w-full">
-                          <span className="text-xs text-secondary">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
+                          <span className="text-xs text-secondary leading-relaxed">
                             Connect Figma to authorize syncing design tokens to your repository.
                           </span>
                           <button
                             type="button"
                             onClick={handleToggleFigmaConnection}
-                            className="flex items-center gap-1.5 rounded-md bg-accent text-accent-foreground px-3.5 py-1.5 text-xs font-medium hover:opacity-90"
+                            className="flex items-center justify-center gap-1.5 rounded-md bg-accent text-accent-foreground px-3.5 py-2 sm:py-1.5 text-xs font-medium hover:opacity-90 shrink-0 w-full sm:w-auto"
                           >
                             <Figma size={13} />
                             <span>Connect Figma Account</span>
                           </button>
                         </div>
                       ) : (
-                        <>
-                          <span className="text-xs text-secondary">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
+                          <span className="text-xs text-secondary truncate">
                             Authorized via <b className="text-text">Figma Token Connection</b>
                           </span>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 w-full sm:w-auto">
                             <button
                               type="button"
                               onClick={() => alert("Sync cancelled.")}
-                              className="px-3 py-1.5 text-xs text-secondary hover:text-text rounded border border-border bg-surface"
+                              className="flex-1 sm:flex-initial px-3 py-2 sm:py-1.5 text-xs text-secondary hover:text-text rounded border border-border bg-surface text-center"
                             >
                               Cancel
                             </button>
@@ -446,7 +446,7 @@ export function AnalysisView({
                               type="button"
                               disabled={isApproving}
                               onClick={handleApproveCriticalStep}
-                              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded bg-accent text-accent-foreground hover:opacity-90"
+                              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2 sm:py-1.5 text-xs font-medium rounded bg-accent text-accent-foreground hover:opacity-90"
                             >
                               {isApproving ? (
                                 <>
@@ -461,7 +461,7 @@ export function AnalysisView({
                               )}
                             </button>
                           </div>
-                        </>
+                        </div>
                       )}
                     </div>
                   </div>
