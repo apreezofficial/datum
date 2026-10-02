@@ -36,6 +36,7 @@ import {
   Palette,
   Plane,
   Cpu,
+  ArrowDown,
 } from "lucide-react";
 
 interface StepItem {
@@ -143,11 +144,42 @@ export function DatumApp() {
 
   const activeModel = models.find((m) => m.id === selectedModelId) || models[0];
 
-  // Auto-close sidebar on small screens
-  React.useEffect(() => {
-    if (typeof window !== "undefined" && window.innerWidth < 768) {
-      setSidebarOpen(false);
+  // Auto-scroll & "Go down" button state
+  const mainScrollRef = React.useRef<HTMLElement>(null);
+  const [showScrollDownButton, setShowScrollDownButton] = React.useState(false);
+  const isProgrammaticScrollRef = React.useRef(false);
+  const userScrolledUpRef = React.useRef(false);
+
+  const handleScroll = React.useCallback(() => {
+    const el = mainScrollRef.current;
+    if (!el) return;
+
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const isAwayFromBottom = distanceFromBottom > 70;
+
+    if (!isProgrammaticScrollRef.current) {
+      userScrolledUpRef.current = isAwayFromBottom;
     }
+
+    setShowScrollDownButton(isAwayFromBottom);
+  }, []);
+
+  const scrollToBottom = React.useCallback((behavior: ScrollBehavior = "smooth") => {
+    const el = mainScrollRef.current;
+    if (!el) return;
+
+    userScrolledUpRef.current = false;
+    setShowScrollDownButton(false);
+    isProgrammaticScrollRef.current = true;
+
+    el.scrollTo({
+      top: el.scrollHeight,
+      behavior,
+    });
+
+    setTimeout(() => {
+      isProgrammaticScrollRef.current = false;
+    }, 400);
   }, []);
 
   // Survey state
@@ -162,6 +194,15 @@ export function DatumApp() {
   // Critical step gate
   const [criticalApproved, setCriticalApproved] = React.useState(false);
   const [isApproving, setIsApproving] = React.useState(false);
+
+  // Auto-scroll as steps advance or results appear, unless the user has scrolled up to read
+  React.useEffect(() => {
+    if (!activeItem) return;
+
+    if (!userScrolledUpRef.current) {
+      scrollToBottom("smooth");
+    }
+  }, [currentStepIndex, analysisComplete, criticalApproved, activeItem, scrollToBottom]);
 
   // History list
   const [history, setHistory] = React.useState<
@@ -499,7 +540,7 @@ export function DatumApp() {
       {/* ========================================================================= */}
       {/* 2. MAIN WORKSPACE                                                        */}
       {/* ========================================================================= */}
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex flex-1 flex-col overflow-hidden relative">
         {/* Top Header Bar (border line removed) */}
         <header className="flex h-14 items-center justify-between px-4 sm:px-6 bg-surface shrink-0">
           <div className="flex items-center gap-2.5 sm:gap-3">
@@ -649,7 +690,11 @@ export function DatumApp() {
         </header>
 
         {/* Content Area */}
-        <main className="flex-1 overflow-y-auto">
+        <main
+          ref={mainScrollRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto relative scroll-smooth"
+        >
           {!activeItem ? (
             /* =================== VIEW 1: HERO STATE (IMAGE 1) =================== */
             <div className="flex flex-col items-center justify-center min-h-[calc(100vh-3.5rem)] px-6 text-center max-w-2xl mx-auto">
@@ -1220,6 +1265,20 @@ export function DatumApp() {
             </div>
           )}
         </main>
+
+        {/* Floating "Go down" button (Reveals when user scrolls up to read, smoothly jumps to bottom) */}
+        {showScrollDownButton && activeItem && (
+          <div className="absolute bottom-14 left-0 right-0 flex justify-center z-30 pointer-events-none">
+            <button
+              type="button"
+              onClick={() => scrollToBottom("smooth")}
+              className="pointer-events-auto inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-surface/95 border border-border shadow-xl text-xs font-mono text-text hover:bg-raised hover:border-border/80 transition-all duration-150 backdrop-blur-md active:scale-95"
+            >
+              <ArrowDown size={13} className="text-secondary" />
+              <span>Go down</span>
+            </button>
+          </div>
+        )}
 
         {/* Global Bottom Footer (Fixed at footer level, edge-to-edge) */}
         <footer className="h-10 border-t border-border-subtle/50 px-6 sm:px-8 flex items-center justify-between text-xs text-muted font-mono shrink-0 select-none bg-surface/30">
