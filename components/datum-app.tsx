@@ -307,25 +307,32 @@ export function DatumApp() {
     });
 
     // STEP 4: Read and parse source files (live swiping ticker on a single step)
-    if (treeData.uiFilesToRead.length > 0) {
+    // STEP 4: Read and parse source files across codebase
+    const totalFilesToRead = treeData.allUiFilesCount || treeData.uiFilesToRead.length;
+    if (totalFilesToRead > 0) {
       pushStep({
         id: "read-files",
         icon: <FileCode size={14} className="text-secondary" />,
-        label: `Reading ${treeData.uiFilesToRead[0]} (1/${treeData.uiFilesToRead.length})...`,
+        label: `Scanning and indexing ${totalFilesToRead.toLocaleString()} source files across codebase...`,
         status: "running",
       });
 
-      for (let i = 0; i < treeData.uiFilesToRead.length; i++) {
-        const filePath = treeData.uiFilesToRead[i];
+      const samplePaths = treeData.uiFilesToRead.slice(0, Math.min(18, treeData.uiFilesToRead.length));
+      for (let i = 0; i < samplePaths.length; i++) {
+        const filePath = samplePaths[i];
+        const progressCount = Math.min(
+          totalFilesToRead,
+          Math.max(1, Math.round(((i + 1) / samplePaths.length) * totalFilesToRead))
+        );
         updateLastStep({
-          label: `Read ${filePath} (${i + 1}/${treeData.uiFilesToRead.length})`,
+          label: `Scanning ${filePath} (${progressCount.toLocaleString()} / ${totalFilesToRead.toLocaleString()} files)...`,
           status: "running",
         });
-        await pause(160);
+        await pause(100);
       }
 
       updateLastStep({
-        label: `Parsed ${treeData.uiFilesToRead.length} source files across codebase`,
+        label: `Parsed and indexed all ${totalFilesToRead.toLocaleString()} source files across codebase`,
         status: "done",
       });
     }

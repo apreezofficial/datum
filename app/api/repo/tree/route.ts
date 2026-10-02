@@ -156,7 +156,7 @@ export async function GET(req: Request) {
 
       // Separate high-scoring files (score > 0)
       const primaryFiles = sortedSourceFiles.filter((p) => scoreFile(p) > 0);
-      const filesToInspect = (primaryFiles.length >= 20 ? primaryFiles : sortedSourceFiles).slice(0, 50);
+      const allRankedFiles = primaryFiles.length > 0 ? primaryFiles : sortedSourceFiles;
 
       return NextResponse.json({
         success: true,
@@ -167,8 +167,8 @@ export async function GET(req: Request) {
           totalFiles: allFiles.length,
           allUiFilesCount: sourceFiles.length,
           allFolders,
-          uiFilesToRead: filesToInspect,
-          fullTreeSample: sortedSourceFiles.slice(0, 200),
+          uiFilesToRead: allRankedFiles.slice(0, 1000),
+          fullTreeSample: sortedSourceFiles.slice(0, 300),
         },
       });
     } catch {

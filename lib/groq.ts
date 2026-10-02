@@ -618,12 +618,13 @@ async function fetchFilesByPaths(
   branch: string,
   paths: string[]
 ): Promise<Array<{ path: string; content: string }>> {
-  const results: Array<{ path: string; content: string }> = [];
+  // Select up to 18 diverse core files across directories
+  const targetPaths = paths.slice(0, 18);
 
-  for (const filePath of paths) {
+  const fetchPromises = targetPaths.map(async (filePath) => {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 4000);
+      const timeout = setTimeout(() => controller.abort(), 4500);
       const res = await fetch(
         `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filePath}`,
         { headers: { "User-Agent": "Datum-Agent" }, signal: controller.signal }
@@ -632,17 +633,19 @@ async function fetchFilesByPaths(
 
       if (res.ok) {
         const text = await res.text();
-        results.push({
+        return {
           path: filePath,
-          content: text.length > 2000 ? text.slice(0, 2000) + "\n...[truncated for analysis]" : text,
-        });
+          content: text.length > 2500 ? text.slice(0, 2500) + "\n...[truncated for analysis]" : text,
+        };
       }
     } catch {
       // skip file on error
     }
-  }
+    return null;
+  });
 
-  return results;
+  const results = await Promise.all(fetchPromises);
+  return results.filter((r): r is { path: string; content: string } => r !== null);
 }
 
 /**
