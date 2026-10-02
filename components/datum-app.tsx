@@ -369,7 +369,13 @@ export function DatumApp() {
           status: "done",
         });
         setHistory((prev) => [
-          { id: Math.random().toString(), name: cleanName, type: "github", summary: `${realData.totalFindings} flaws mapped`, auditData: realData },
+          {
+            id: Math.random().toString(),
+            name: cleanName,
+            type: "github",
+            summary: `${realData.totalFindings} flaws mapped`,
+            auditData: realData,
+          },
           ...prev.filter((h) => h.name !== cleanName),
         ]);
       } else {
@@ -427,14 +433,14 @@ export function DatumApp() {
     setAuditError(null);
     setAuditData(item.auditData ?? null);
     if (item.auditData?.stack) setDetectedStack(item.auditData.stack);
-    // Rebuild a static completed step list for history items
+    // Rebuild clean completed step list for history items
     const steps: StepItem[] = item.type === "github"
       ? [
           { id: "resolve", icon: <GitBranch size={14} className="text-secondary" />, label: `Resolved ${item.name}`, status: "done" },
-          { id: "stack", icon: <Package size={14} className="text-secondary" />, label: "Detected project stack", status: "done" },
-          { id: "tree", icon: <FolderGit2 size={14} className="text-secondary" />, label: "Mapped repository source files", status: "done" },
+          { id: "stack", icon: <Package size={14} className="text-secondary" />, label: `Detected project stack · ${item.auditData?.stack?.language || "TypeScript"} · ${item.auditData?.stack?.ecosystem || "React"}`, status: "done" },
+          { id: "tree", icon: <FolderGit2 size={14} className="text-secondary" />, label: "Mapped and indexed repository source files across codebase", status: "done" },
           { id: "audit", icon: <Compass size={14} className="text-secondary" />,
-            label: item.auditData ? `Audit completed: ${item.auditData.totalFindings || 0} issues mapped` : "Audit completed",
+            label: item.auditData ? `Analysis completed: ${item.auditData.totalFindings || 0} flaws mapped · Score ${item.auditData.healthScore}/100` : "Analysis completed",
             status: "done" },
         ]
       : figmaSteps;

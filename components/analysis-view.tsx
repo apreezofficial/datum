@@ -14,11 +14,11 @@ import {
   RefreshCw,
   Github,
   Figma,
-  Code2,
-  AlertTriangle,
   Bug,
   Zap,
   ListTodo,
+  Copy,
+  Download,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -72,6 +72,9 @@ export function AnalysisView({
     "all" | "security" | "bug" | "performance" | "architecture" | "todo"
   >("all");
 
+  const [copiedFixIndex, setCopiedFixIndex] = React.useState<number | null>(null);
+  const [copiedAllPatches, setCopiedAllPatches] = React.useState(false);
+
   const findings = auditData?.findings || [];
   const todos = auditData?.todosFound || [];
 
@@ -87,6 +90,59 @@ export function AnalysisView({
       : activeCategoryFilter === "todo"
       ? []
       : findings.filter((f) => f.category === activeCategoryFilter);
+
+  // Copy single fix to clipboard
+  const handleCopySingleFix = (text: string, index: number) => {
+    navigator.clipboard.writeText(text);
+    setCopiedFixIndex(index);
+    setTimeout(() => setCopiedFixIndex(null), 2000);
+  };
+
+  // Copy all suggested fixes as a markdown checklist
+  const handleCopyAllPatches = () => {
+    if (!auditData) return;
+    const patchText = findings
+      .map((f, i) => {
+        return `### Flaw ${i + 1}: ${f.title} (${f.category} - ${f.severity})\n- **File:** \`${f.file}:${f.line}\`\n- **Issue:** ${f.description}\n- **Fix:** ${f.suggestedFix || "See description"}\n`;
+      })
+      .join("\n---\n\n");
+
+    navigator.clipboard.writeText(patchText);
+    setCopiedAllPatches(true);
+    setTimeout(() => setCopiedAllPatches(false), 2000);
+  };
+
+  // Export full audit report as a downloadable markdown document
+  const handleExportReport = () => {
+    if (!auditData) return;
+    const reportMd = `# Codebase Flaw Audit Report: ${activeItem}
+Model: ${activeModel.name}
+Health Score: ${auditData.healthScore} / 100
+Date: ${new Date().toISOString()}
+
+## Summary
+${auditData.summary}
+
+## Mapped Flaws (${findings.length})
+${findings
+  .map(
+    (f, i) =>
+      `### ${i + 1}. [${f.severity.toUpperCase()}] ${f.title} (${f.category})\n- **Location:** \`${f.file}:${f.line}\`\n- **Details:** ${f.description}\n- **Suggested Fix:** \`${f.suggestedFix || "N/A"}\`\n`
+  )
+  .join("\n")}
+
+## In-Code Work In Progress & TODOs (${todos.length})
+${todos.map((t) => `- \`${t.file}:${t.line}\`: ${t.text}`).join("\n")}
+`;
+
+    const blob = new Blob([reportMd], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `datum-audit-${activeItem.replace("/", "-")}.md`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="max-w-3xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-6 sm:space-y-8">
@@ -303,7 +359,7 @@ export function AnalysisView({
                           filteredFindings.map((f, idx) => (
                             <div
                               key={idx}
-                              className="p-3.5 border border-border-subtle rounded-lg bg-raised/40 space-y-2"
+                              className="p-3.5 border border-border-subtle rounded-lg bg-raised/40 space-y-2.5"
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-2 min-w-0">
@@ -334,19 +390,35 @@ export function AnalysisView({
                                   {f.severity} severity
                                 </span>
                               </div>
+
                               <div className="text-[11px] text-secondary font-sans leading-relaxed">
                                 {f.description}
                               </div>
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between text-[10px] text-muted pt-1.5 border-t border-border/40 gap-1">
-                                <span className="font-semibold text-text/80">
-                                  {f.file}:{f.line}
-                                </span>
-                                {f.suggestedFix && (
-                                  <span className="text-tide truncate max-w-sm">
-                                    Suggested Fix: {f.suggestedFix}
-                                  </span>
-                                )}
+
+                              <div className="text-[10px] text-muted font-mono flex items-center gap-1">
+                                <span>File:</span>
+                                <code className="font-semibold text-text/80">{f.file}:{f.line}</code>
                               </div>
+
+                              {f.suggestedFix && (
+                                <div className="flex items-center justify-between text-[11px] bg-surface/90 p-2 rounded border border-border/60">
+                                  <span className="text-text font-mono truncate mr-2">
+                                    <b className="text-secondary">Fix:</b> {f.suggestedFix}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopySingleFix(f.suggestedFix!, idx)}
+                                    className="inline-flex items-center gap-1 text-[10px] text-secondary hover:text-text px-2 py-0.5 rounded bg-raised border border-border shrink-0 transition-colors"
+                                  >
+                                    {copiedFixIndex === idx ? (
+                                      <Check size={11} className="text-emerald-500" />
+                                    ) : (
+                                      <Copy size={11} />
+                                    )}
+                                    <span>{copiedFixIndex === idx ? "Copied" : "Copy"}</span>
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           ))
                         ) : (
@@ -384,65 +456,88 @@ export function AnalysisView({
                     )}
                   </div>
 
-                  {/* ACTION: OPEN FIX PR ON VERIFIED SECURITY OR BUG FINDINGS */}
+                  {/* ACTION BAR: COPY PATCHES, EXPORT REPORT & MAINTAINER PR */}
                   {(auditData?.totalFindings ?? 0) > 0 ? (
                     <div
-                      className={`border rounded-xl p-5 transition-all shadow-xs ${
+                      className={`border rounded-xl p-5 transition-all shadow-xs space-y-4 ${
                         criticalApproved
                           ? "border-emerald-500/40 bg-emerald-50/20 dark:bg-emerald-950/10"
-                          : "border-ochre/60 bg-ochre/5"
+                          : "border-border bg-surface"
                       }`}
                     >
-                      {!criticalApproved ? (
-                        <div className="space-y-3.5">
-                          <div className="flex items-start gap-2.5">
-                            <ShieldAlert size={18} className="text-ochre shrink-0 mt-0.5" />
-                            <div>
-                              <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-ochre">
-                                Remediation Authorization
-                              </span>
-                              <h3 className="text-sm font-bold text-text mt-0.5">
-                                Open Fix Pull Request on {activeItem}?
-                              </h3>
-                              <p className="text-xs text-secondary mt-1 leading-relaxed">
-                                This will generate branch <code className="font-mono text-text">datum/flaw-fixes</code> proposing targeted patches for the {auditData?.totalFindings ?? 0} mapped security and stability findings.
-                              </p>
-                            </div>
-                          </div>
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div>
+                          <h3 className="text-sm font-bold text-text">
+                            Remediation & Export Actions
+                          </h3>
+                          <p className="text-xs text-secondary mt-0.5">
+                            Apply or share fixes for the {auditData?.totalFindings ?? 0} mapped security and reliability findings.
+                          </p>
+                        </div>
 
-                          <div className="pt-2 border-t border-border-subtle">
-                            {!isLoggedIn ? (
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
-                                <span className="text-xs text-secondary leading-relaxed">
-                                  Sign in to authorize PR creation on GitHub.
-                                </span>
+                        {/* Quick Utility Buttons */}
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={handleCopyAllPatches}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded bg-raised border border-border text-text hover:bg-raised/80 transition-colors"
+                          >
+                            {copiedAllPatches ? (
+                              <Check size={12} className="text-emerald-500" />
+                            ) : (
+                              <Copy size={12} />
+                            )}
+                            <span>{copiedAllPatches ? "Copied" : "Copy All Patches"}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={handleExportReport}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono rounded bg-raised border border-border text-text hover:bg-raised/80 transition-colors"
+                          >
+                            <Download size={12} />
+                            <span>Export (.md)</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Pull Request Flow */}
+                      <div className="pt-3 border-t border-border-subtle">
+                        {!criticalApproved ? (
+                          <div className="p-3 bg-raised/30 rounded-lg border border-border/40 space-y-2.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-medium text-text">
+                                Repository Maintainer or Fork Contributor?
+                              </span>
+                              <span className="text-[10px] font-mono text-muted">
+                                Branch: datum/flaw-fixes
+                              </span>
+                            </div>
+
+                            <p className="text-xs text-secondary leading-relaxed">
+                              If you have push access or wish to create a pull request proposing these fixes, authorize with your GitHub account.
+                            </p>
+
+                            <div className="pt-1 flex items-center justify-between gap-2">
+                              {!isLoggedIn ? (
                                 <button
                                   type="button"
                                   onClick={handleToggleLogin}
-                                  className="flex items-center justify-center gap-1.5 rounded-md bg-accent text-accent-foreground px-3.5 py-2 sm:py-1.5 text-xs font-medium hover:opacity-90 shrink-0 w-full sm:w-auto"
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-accent text-accent-foreground hover:opacity-90"
                                 >
                                   <Github size={13} />
-                                  <span>Sign in with GitHub</span>
+                                  <span>Sign in with GitHub to Open PR</span>
                                 </button>
-                              </div>
-                            ) : (
-                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
-                                <span className="text-xs text-secondary truncate">
-                                  Signed in as <b className="text-text">{userProfile?.name}</b>
-                                </span>
-                                <div className="flex items-center gap-2 w-full sm:w-auto">
-                                  <button
-                                    type="button"
-                                    onClick={() => alert("Action skipped.")}
-                                    className="flex-1 sm:flex-initial px-3 py-2 sm:py-1.5 text-xs text-secondary hover:text-text rounded border border-border bg-surface text-center"
-                                  >
-                                    Decline
-                                  </button>
+                              ) : (
+                                <div className="flex items-center justify-between w-full">
+                                  <span className="text-xs text-secondary truncate">
+                                    Signed in as <b className="text-text">{userProfile?.name}</b>
+                                  </span>
                                   <button
                                     type="button"
                                     disabled={isApproving}
                                     onClick={handleApproveCriticalStep}
-                                    className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2 sm:py-1.5 text-xs font-medium rounded bg-accent text-accent-foreground hover:opacity-90"
+                                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded bg-accent text-accent-foreground hover:opacity-90"
                                   >
                                     {isApproving ? (
                                       <>
@@ -451,55 +546,55 @@ export function AnalysisView({
                                       </>
                                     ) : (
                                       <>
-                                        <ShieldCheck size={14} />
+                                        <ShieldCheck size={13} />
                                         <span>Open Fix PR</span>
                                       </>
                                     )}
                                   </button>
                                 </div>
-                              </div>
-                            )}
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-3 text-xs">
-                          <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-medium">
-                            <CheckCircle2 size={18} />
-                            <span>PR Opened on GitHub</span>
+                        ) : (
+                          <div className="space-y-3 text-xs">
+                            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-medium">
+                              <CheckCircle2 size={18} />
+                              <span>PR Opened on GitHub</span>
+                            </div>
+                            <p className="text-secondary text-xs pl-6 leading-relaxed">
+                              Branch <code className="font-mono text-text">datum/flaw-fixes</code> with proposed patches has been submitted to <code className="font-mono text-text">{activeItem}</code>.
+                            </p>
+                            <div className="pl-6 pt-1 flex flex-wrap items-center gap-3">
+                              <a
+                                href={
+                                  activeItem?.includes("/")
+                                    ? `https://github.com/${activeItem}/pull/1`
+                                    : "https://github.com/apreezofficial/datum/pull/1"
+                                }
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-1 font-mono text-xs text-tide hover:underline"
+                              >
+                                <GitPullRequest size={13} />
+                                <span>
+                                  github.com/
+                                  {activeItem?.includes("/") ? `${activeItem}/pull/1` : "apreezofficial/datum/pull/1"}
+                                </span>
+                                <ExternalLink size={11} />
+                              </a>
+                              <span className="text-muted">·</span>
+                              <button
+                                type="button"
+                                onClick={resetToNew}
+                                className="inline-flex items-center gap-1 text-secondary hover:text-text font-mono text-xs"
+                              >
+                                <RefreshCw size={12} />
+                                <span>Inspect another codebase</span>
+                              </button>
+                            </div>
                           </div>
-                          <p className="text-secondary text-xs pl-6 leading-relaxed">
-                            Branch <code className="font-mono text-text">datum/flaw-fixes</code> with proposed patches has been submitted to <code className="font-mono text-text">{activeItem}</code>.
-                          </p>
-                          <div className="pl-6 pt-1 flex flex-wrap items-center gap-3">
-                            <a
-                              href={
-                                activeItem?.includes("/")
-                                  ? `https://github.com/${activeItem}/pull/1`
-                                  : "https://github.com/apreezofficial/datum/pull/1"
-                              }
-                              target="_blank"
-                              rel="noreferrer"
-                              className="inline-flex items-center gap-1 font-mono text-xs text-tide hover:underline"
-                            >
-                              <GitPullRequest size={13} />
-                              <span>
-                                github.com/
-                                {activeItem?.includes("/") ? `${activeItem}/pull/1` : "apreezofficial/datum/pull/1"}
-                              </span>
-                              <ExternalLink size={11} />
-                            </a>
-                            <span className="text-muted">·</span>
-                            <button
-                              type="button"
-                              onClick={resetToNew}
-                              className="inline-flex items-center gap-1 text-secondary hover:text-text font-mono text-xs"
-                            >
-                              <RefreshCw size={12} />
-                              <span>Inspect another codebase</span>
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <div className="border border-emerald-500/40 bg-emerald-500/5 rounded-xl p-5 flex items-center justify-between gap-4">
