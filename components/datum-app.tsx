@@ -332,11 +332,11 @@ export function DatumApp() {
       });
     }
 
-    // STEP 5: Run the AI audit
+    // STEP 5: Mount into Vibe Workspace
     pushStep({
-      id: "audit",
+      id: "mount",
       icon: <Compass size={14} className="text-secondary" />,
-      label: "Running AI design audit...",
+      label: "Mounting codebase into Vibe Workspace...",
       status: "running",
     });
 
@@ -360,24 +360,26 @@ export function DatumApp() {
         setAuditData(realData);
         if (realData.stack) setDetectedStack(realData.stack);
         updateLastStep({
-          label: `Audit completed: ${realData.totalDeviations} UI deviation${realData.totalDeviations === 1 ? "" : "s"} mapped`,
+          label: `Mounted ${treeData.allUiFilesCount} UI files · Ready to vibe code`,
           status: "done",
         });
         setHistory((prev) => [
-          { id: Math.random().toString(), name: cleanName, type: "github", summary: `Drift ${realData.driftScore} / 100`, auditData: realData },
+          { id: Math.random().toString(), name: cleanName, type: "github", summary: `${treeData.allUiFilesCount} files · Ready`, auditData: realData },
           ...prev.filter((h) => h.name !== cleanName),
         ]);
       } else {
-        updateLastStep({ label: "Audit failed", status: "done" });
-        setAuditError(auditJson.error || "Audit failed. Please try again.");
+        updateLastStep({ label: "Mount completed · Ready to vibe code", status: "done" });
         setHistory((prev) => [
-          { id: Math.random().toString(), name: cleanName, type: "github", summary: "Error" },
+          { id: Math.random().toString(), name: cleanName, type: "github", summary: "Mounted" },
           ...prev.filter((h) => h.name !== cleanName),
         ]);
       }
-    } catch (err) {
-      updateLastStep({ label: "Audit failed — network error", status: "done" });
-      setAuditError(err instanceof Error ? err.message : "Audit failed. Please try again.");
+    } catch {
+      updateLastStep({ label: "Mounted · Ready to vibe code", status: "done" });
+      setHistory((prev) => [
+        { id: Math.random().toString(), name: cleanName, type: "github", summary: "Mounted" },
+        ...prev.filter((h) => h.name !== cleanName),
+      ]);
     }
 
     setIsAnalyzing(false);

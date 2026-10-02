@@ -84,7 +84,7 @@ export function DatumSidebar({
           </button>
         </div>
 
-        {/* Minimal + New Chat / New Survey */}
+        {/* Minimal + New Workspace */}
         <div className="px-3 pt-2 shrink-0">
           <button
             type="button"
@@ -92,7 +92,7 @@ export function DatumSidebar({
             className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-normal text-text hover:bg-raised transition-colors whitespace-nowrap"
           >
             <Plus size={15} strokeWidth={1.75} className="text-secondary shrink-0" />
-            <span className="whitespace-nowrap">New survey</span>
+            <span className="whitespace-nowrap">New workspace</span>
           </button>
         </div>
 
@@ -101,7 +101,7 @@ export function DatumSidebar({
           {history.length > 0 ? (
             <div className="space-y-1">
               <span className="text-[10px] font-mono text-muted uppercase tracking-wider px-2 block mb-2">
-                Recent Audits
+                Recent Codebases
               </span>
               {history.map((item) => (
                 <button
