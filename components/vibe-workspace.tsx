@@ -3,23 +3,18 @@
 import * as React from "react";
 import {
   Send,
-  Sparkles,
   Code2,
   Copy,
   Check,
   FileCode,
-  FolderTree,
-  FileText,
-  ChevronRight,
-  ChevronDown,
-  Terminal,
   RefreshCw,
-  ExternalLink,
   GitBranch,
-  ShieldAlert,
   Loader2,
   HelpCircle,
-  Lightbulb,
+  Layers,
+  ArrowDown,
+  Menu,
+  X,
 } from "lucide-react";
 import type { ChatMessage, ModelOption } from "@/types/datum";
 import type { StackInfo } from "@/lib/stack-detector";
@@ -33,6 +28,65 @@ interface VibeWorkspaceProps {
   activeModel: ModelOption;
   isLoggedIn: boolean;
   onReset: () => void;
+}
+
+// Clean inline Markdown parser for bold, inline code, and paragraphs
+function renderFormattedText(text: string) {
+  const lines = text.split("\n");
+  return lines.map((line, lineIdx) => {
+    // Empty line = spacer
+    if (!line.trim()) {
+      return <div key={lineIdx} className="h-2" />;
+    }
+
+    // Bullet points
+    const isBullet = line.trim().startsWith("- ") || line.trim().startsWith("* ");
+    const content = isBullet ? line.trim().slice(2) : line;
+
+    // Split by inline code `...`
+    const parts = content.split(/(`[^`]+`)/g);
+
+    const renderedLine = parts.map((part, pIdx) => {
+      if (part.startsWith("`") && part.endsWith("`")) {
+        return (
+          <code
+            key={pIdx}
+            className="px-1.5 py-0.5 rounded bg-raised border border-border/60 font-mono text-[11px] text-text"
+          >
+            {part.slice(1, -1)}
+          </code>
+        );
+      }
+
+      // Parse bold **...**
+      const boldParts = part.split(/(\*\*[^*]+\*\*)/g);
+      return boldParts.map((bPart, bIdx) => {
+        if (bPart.startsWith("**") && bPart.endsWith("**")) {
+          return (
+            <strong key={bIdx} className="font-semibold text-text">
+              {bPart.slice(2, -2)}
+            </strong>
+          );
+        }
+        return <span key={bIdx}>{bPart}</span>;
+      });
+    });
+
+    if (isBullet) {
+      return (
+        <div key={lineIdx} className="flex items-start gap-2 pl-2">
+          <span className="text-secondary select-none">•</span>
+          <span className="flex-1">{renderedLine}</span>
+        </div>
+      );
+    }
+
+    return (
+      <div key={lineIdx} className="leading-relaxed">
+        {renderedLine}
+      </div>
+    );
+  });
 }
 
 export function VibeWorkspace({
@@ -50,15 +104,18 @@ export function VibeWorkspace({
       id: "welcome",
       role: "assistant",
       createdAt: Date.now(),
-      content: `I've mounted **${activeItem}** into your workspace.
-I know the file structure, UI components, and design system. 
+      content: `Mounted **${activeItem}** into your workspace.
+I have parsed the UI component tree and design tokens.
 
-What do you want to build or ask? You can vibe code a new component, refactor an existing one, or ask architectural questions!`,
+What would you like to build or inspect? You can generate new components matching this repository, refactor existing files, or ask questions about how this codebase is structured.`,
     },
   ]);
 
   const [inputPrompt, setInputPrompt] = React.useState("");
   const [isGenerating, setIsGenerating] = React.useState(false);
+
+  // Mobile sidebar toggle drawer
+  const [mobileDrawerOpen, setMobileDrawerOpen] = React.useState(false);
 
   // File browser state
   const [selectedFile, setSelectedFile] = React.useState<{ path: string; content: string } | null>(null);
@@ -66,11 +123,33 @@ What do you want to build or ask? You can vibe code a new component, refactor an
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
   const [sidebarTab, setSidebarTab] = React.useState<"files" | "presets">("files");
 
-  const chatEndRef = React.useRef<HTMLDivElement>(null);
+  // Scroll container and "Go down" button
+  const chatScrollRef = React.useRef<HTMLDivElement>(null);
+  const [showScrollDown, setShowScrollDown] = React.useState(false);
+  const isProgrammaticScrollRef = React.useRef(false);
 
+  const handleChatScroll = React.useCallback(() => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowScrollDown(distFromBottom > 80);
+  }, []);
+
+  const scrollToBottom = React.useCallback((behavior: ScrollBehavior = "smooth") => {
+    const el = chatScrollRef.current;
+    if (!el) return;
+    isProgrammaticScrollRef.current = true;
+    setShowScrollDown(false);
+    el.scrollTo({ top: el.scrollHeight, behavior });
+    setTimeout(() => {
+      isProgrammaticScrollRef.current = false;
+    }, 400);
+  }, []);
+
+  // Auto-scroll on new message
   React.useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isGenerating]);
+    scrollToBottom("smooth");
+  }, [messages, isGenerating, scrollToBottom]);
 
   // Handle selecting a file from the repository tree to mount into context
   const handleSelectFile = async (path: string) => {
@@ -79,9 +158,14 @@ What do you want to build or ask? You can vibe code a new component, refactor an
       return;
     }
     setIsLoadingFile(true);
+    setMobileDrawerOpen(false); // Close mobile drawer when file selected
     try {
-      const res = await fetch(`/api/repo/file?repo=${encodeURIComponent(activeItem)}&path=${encodeURIComponent(path)}&branch=${treeData?.branch || "main"}`);
-      const data = await res.json() as { success: boolean; data?: { path: string; content: string } };
+      const res = await fetch(
+        `/api/repo/file?repo=${encodeURIComponent(activeItem)}&path=${encodeURIComponent(path)}&branch=${
+          treeData?.branch || "main"
+        }`
+      );
+      const data = (await res.json()) as { success: boolean; data?: { path: string; content: string } };
       if (data.success && data.data) {
         setSelectedFile(data.data);
       }
@@ -98,6 +182,8 @@ What do you want to build or ask? You can vibe code a new component, refactor an
     if (!textToSend || isGenerating) return;
 
     setInputPrompt("");
+    setMobileDrawerOpen(false);
+
     const userMsg: ChatMessage = {
       id: Math.random().toString(),
       role: "user",
@@ -119,15 +205,17 @@ What do you want to build or ask? You can vibe code a new component, refactor an
           messages: [...messages, userMsg].map((m) => ({ role: m.role, content: m.content })),
           fileTreeSample: treeData?.fullTreeSample || treeData?.uiFilesToRead,
           selectedFileContent: selectedFile ? { path: selectedFile.path, content: selectedFile.content } : undefined,
-          stackInfo: detectedStack ? {
-            language: detectedStack.language,
-            ecosystem: detectedStack.ecosystem,
-            stylingSystem: detectedStack.stylingSystem,
-          } : undefined,
+          stackInfo: detectedStack
+            ? {
+                language: detectedStack.language,
+                ecosystem: detectedStack.ecosystem,
+                stylingSystem: detectedStack.stylingSystem,
+              }
+            : undefined,
         }),
       });
 
-      const json = await res.json() as { success: boolean; data?: { reply: string } };
+      const json = (await res.json()) as { success: boolean; data?: { reply: string } };
 
       if (json.success && json.data) {
         setMessages((prev) => [
@@ -135,7 +223,7 @@ What do you want to build or ask? You can vibe code a new component, refactor an
           {
             id: Math.random().toString(),
             role: "assistant",
-            content: json.data?.reply || "Done!",
+            content: json.data?.reply || "Done.",
             createdAt: Date.now(),
           },
         ]);
@@ -145,7 +233,7 @@ What do you want to build or ask? You can vibe code a new component, refactor an
           {
             id: Math.random().toString(),
             role: "assistant",
-            content: "Sorry, I hit an error processing that prompt. Please try again.",
+            content: "Encountered an error processing that prompt. Please try again.",
             createdAt: Date.now(),
           },
         ]);
@@ -156,7 +244,7 @@ What do you want to build or ask? You can vibe code a new component, refactor an
         {
           id: Math.random().toString(),
           role: "assistant",
-          content: "Network error communicating with the vibe model.",
+          content: "Network error communicating with the model.",
           createdAt: Date.now(),
         },
       ]);
@@ -172,16 +260,20 @@ What do you want to build or ask? You can vibe code a new component, refactor an
   };
 
   const PRESET_PROMPTS = [
-    { label: "Build a modern pricing card component using this repo's tokens", icon: <Sparkles size={13} className="text-tide" /> },
-    { label: "Explain the architecture and data flow of this codebase", icon: <HelpCircle size={13} className="text-secondary" /> },
-    { label: "Build an accessible modal dialog matching existing styles", icon: <Code2 size={13} className="text-emerald-500" /> },
-    { label: "Analyze potential performance bottlenecks or styling inconsistencies", icon: <Lightbulb size={13} className="text-ochre" /> },
+    { label: "Build a pricing card component using this repo's tokens" },
+    { label: "Explain the architecture and data flow of this codebase" },
+    { label: "Build an accessible modal dialog matching existing styles" },
+    { label: "Analyze potential performance bottlenecks or styling inconsistencies" },
   ];
 
   return (
-    <div className="flex h-full w-full overflow-hidden">
-      {/* 1. LEFT PANEL: REPO EXPLORER & ACTIVE CONTEXT */}
-      <div className="w-72 sm:w-80 border-r border-border bg-surface/50 flex flex-col shrink-0 overflow-hidden">
+    <div className="flex h-full w-full overflow-hidden relative">
+      {/* 1. LEFT PANEL: REPO EXPLORER & ACTIVE CONTEXT (Desktop sidebar + Mobile drawer) */}
+      <div
+        className={`fixed inset-y-0 left-0 z-30 w-72 sm:w-80 bg-surface border-r border-border flex flex-col shrink-0 transition-transform duration-200 md:static md:translate-x-0 ${
+          mobileDrawerOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"
+        }`}
+      >
         {/* Header */}
         <div className="p-3 border-b border-border flex items-center justify-between">
           <div className="min-w-0">
@@ -193,14 +285,23 @@ What do you want to build or ask? You can vibe code a new component, refactor an
               {detectedStack ? `${detectedStack.language} · ${detectedStack.stylingSystem}` : "Mounted Codebase"}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onReset}
-            className="p-1 rounded text-secondary hover:text-text hover:bg-raised transition-colors shrink-0"
-            title="Switch codebase"
-          >
-            <RefreshCw size={13} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={onReset}
+              className="p-1 rounded text-secondary hover:text-text hover:bg-raised transition-colors shrink-0"
+              title="Switch codebase"
+            >
+              <RefreshCw size={13} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobileDrawerOpen(false)}
+              className="md:hidden p-1 rounded text-secondary hover:text-text hover:bg-raised"
+            >
+              <X size={15} />
+            </button>
+          </div>
         </div>
 
         {/* Tab Switcher */}
@@ -209,9 +310,7 @@ What do you want to build or ask? You can vibe code a new component, refactor an
             type="button"
             onClick={() => setSidebarTab("files")}
             className={`flex-1 py-2 text-center border-b-2 font-medium transition-colors ${
-              sidebarTab === "files"
-                ? "border-accent text-text"
-                : "border-transparent text-secondary hover:text-text"
+              sidebarTab === "files" ? "border-accent text-text" : "border-transparent text-secondary hover:text-text"
             }`}
           >
             Files ({treeData?.uiFilesToRead?.length || 0})
@@ -220,12 +319,10 @@ What do you want to build or ask? You can vibe code a new component, refactor an
             type="button"
             onClick={() => setSidebarTab("presets")}
             className={`flex-1 py-2 text-center border-b-2 font-medium transition-colors ${
-              sidebarTab === "presets"
-                ? "border-accent text-text"
-                : "border-transparent text-secondary hover:text-text"
+              sidebarTab === "presets" ? "border-accent text-text" : "border-transparent text-secondary hover:text-text"
             }`}
           >
-            Vibe Presets
+            Presets
           </button>
         </div>
 
@@ -253,32 +350,28 @@ What do you want to build or ask? You can vibe code a new component, refactor an
                       <span className="truncate">{path}</span>
                     </div>
                     {selectedFile?.path === path && (
-                      <span className="text-[9px] bg-accent/20 text-accent-foreground px-1 py-0.5 rounded uppercase">
+                      <span className="text-[9px] bg-accent/20 text-accent-foreground px-1 py-0.5 rounded font-mono">
                         Mounted
                       </span>
                     )}
                   </button>
                 ))
               ) : (
-                <div className="p-4 text-center text-xs text-secondary">
-                  No component files found.
-                </div>
+                <div className="p-4 text-center text-xs text-secondary font-mono">No component files found.</div>
               )}
             </>
           ) : (
             <div className="space-y-2 p-1">
-              <div className="text-[10px] font-mono text-muted uppercase tracking-wider px-1">
-                Quick Actions
-              </div>
+              <div className="text-[10px] font-mono text-muted uppercase tracking-wider px-1">Quick Prompts</div>
               {PRESET_PROMPTS.map((preset, idx) => (
                 <button
                   key={idx}
                   type="button"
                   onClick={() => handleSendPrompt(preset.label)}
-                  className="w-full text-left p-2.5 rounded-lg border border-border bg-surface hover:bg-raised transition-all text-xs text-text flex items-start gap-2"
+                  className="w-full text-left p-2.5 rounded-lg border border-border bg-surface hover:bg-raised transition-all text-xs text-text flex items-start gap-2 leading-relaxed"
                 >
-                  <span className="mt-0.5 shrink-0">{preset.icon}</span>
-                  <span className="leading-snug">{preset.label}</span>
+                  <Code2 size={13} className="text-secondary shrink-0 mt-0.5" />
+                  <span>{preset.label}</span>
                 </button>
               ))}
             </div>
@@ -290,46 +383,67 @@ What do you want to build or ask? You can vibe code a new component, refactor an
           <div className="p-2.5 border-t border-border bg-raised/40">
             <div className="flex items-center justify-between text-[11px] font-mono text-text pb-1">
               <span className="truncate font-semibold">{selectedFile.path}</span>
-              <button
-                type="button"
-                onClick={() => setSelectedFile(null)}
-                className="text-secondary hover:text-text"
-              >
+              <button type="button" onClick={() => setSelectedFile(null)} className="text-secondary hover:text-text">
                 ✕
               </button>
             </div>
             <div className="text-[10px] text-secondary font-mono">
-              Injected into Vibe context ({selectedFile.content.length.toLocaleString()} chars)
+              Mounted in context ({selectedFile.content.length.toLocaleString()} chars)
             </div>
           </div>
         )}
       </div>
 
+      {/* Mobile Backdrop for Sidebar Drawer */}
+      {mobileDrawerOpen && (
+        <div
+          onClick={() => setMobileDrawerOpen(false)}
+          className="fixed inset-0 z-20 bg-black/40 md:hidden backdrop-blur-xs"
+        />
+      )}
+
       {/* 2. RIGHT PANEL: CHAT & VIBE CODING WORKSPACE */}
-      <div className="flex-1 flex flex-col h-full overflow-hidden bg-bg">
+      <div className="flex-1 flex flex-col h-full overflow-hidden bg-bg relative">
+        {/* Mobile Sub-Header: Files toggle button */}
+        <div className="md:hidden flex items-center justify-between px-3 py-2 border-b border-border bg-surface text-xs font-mono">
+          <button
+            type="button"
+            onClick={() => setMobileDrawerOpen(true)}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded border border-border bg-raised text-text"
+          >
+            <Menu size={13} />
+            <span>Files ({treeData?.uiFilesToRead?.length || 0})</span>
+          </button>
+          {selectedFile && (
+            <span className="text-[11px] text-secondary truncate max-w-[180px]">
+              Active: {selectedFile.path.split("/").pop()}
+            </span>
+          )}
+        </div>
+
         {/* Messages Feed */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5">
+        <div
+          ref={chatScrollRef}
+          onScroll={handleChatScroll}
+          className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 sm:space-y-5 relative scroll-smooth"
+        >
           {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex flex-col ${
-                msg.role === "user" ? "items-end" : "items-start"
-              }`}
-            >
+            <div key={msg.id} className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}>
               <div
-                className={`max-w-3xl rounded-xl p-4 sm:p-5 text-sm leading-relaxed ${
+                className={`max-w-2xl sm:max-w-3xl rounded-xl p-3.5 sm:p-5 text-xs sm:text-sm leading-relaxed ${
                   msg.role === "user"
                     ? "bg-accent text-accent-foreground font-medium"
                     : "bg-surface border border-border text-text space-y-3"
                 }`}
               >
-                {/* Render Markdown-like content and code blocks */}
-                <div className="whitespace-pre-wrap leading-relaxed">
+                {/* Clean, robust Markdown parsing */}
+                <div className="leading-relaxed">
                   {msg.content.split("```").map((chunk, idx) => {
                     // Even index = prose text
                     if (idx % 2 === 0) {
-                      return <span key={idx}>{chunk}</span>;
+                      return <div key={idx}>{renderFormattedText(chunk)}</div>;
                     }
+
                     // Odd index = code block
                     const firstNewline = chunk.indexOf("\n");
                     const lang = firstNewline > -1 ? chunk.substring(0, firstNewline).trim() : "";
@@ -373,39 +487,51 @@ What do you want to build or ask? You can vibe code a new component, refactor an
           ))}
 
           {isGenerating && (
-            <div className="flex items-center gap-2 text-xs font-mono text-secondary animate-pulse pl-2">
-              <Loader2 size={14} className="animate-spin text-tide" />
-              <span>Vibing with {activeModel.name}...</span>
+            <div className="flex items-center gap-2 text-xs font-mono text-secondary animate-pulse pl-1">
+              <Loader2 size={13} className="animate-spin text-tide" />
+              <span>Generating response with {activeModel.name}...</span>
             </div>
           )}
-
-          <div ref={chatEndRef} />
         </div>
 
+        {/* Floating "Go down" button for mobile & desktop */}
+        {showScrollDown && (
+          <div className="absolute bottom-16 left-0 right-0 flex justify-center z-20 pointer-events-none">
+            <button
+              type="button"
+              onClick={() => scrollToBottom("smooth")}
+              className="pointer-events-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface border border-border shadow-lg text-xs font-mono text-text hover:bg-raised transition-all active:scale-95"
+            >
+              <ArrowDown size={12} className="text-secondary" />
+              <span>Go down</span>
+            </button>
+          </div>
+        )}
+
         {/* Input Bar */}
-        <div className="p-4 border-t border-border bg-surface/40">
+        <div className="p-3 sm:p-4 border-t border-border bg-surface/50">
           <form
             onSubmit={(e) => {
               e.preventDefault();
               handleSendPrompt();
             }}
-            className="flex items-center gap-2 max-w-4xl mx-auto rounded-full border border-border bg-surface px-4 py-2 shadow-xs focus-within:border-accent transition-colors"
+            className="flex items-center gap-2 max-w-4xl mx-auto rounded-full border border-border bg-surface px-3.5 sm:px-4 py-2 shadow-xs focus-within:border-accent transition-colors"
           >
-            <Sparkles size={16} className="text-tide shrink-0" />
             <input
               type="text"
               value={inputPrompt}
               onChange={(e) => setInputPrompt(e.target.value)}
-              placeholder={`Ask anything about ${activeItem} or vibe code a component...`}
+              placeholder={`Ask about ${activeItem} or describe a component to build...`}
               className="flex-1 bg-transparent border-0 outline-none text-xs sm:text-sm text-text placeholder:text-muted"
               disabled={isGenerating}
             />
             <button
               type="submit"
               disabled={!inputPrompt.trim() || isGenerating}
-              className="rounded-full p-1.5 bg-accent text-accent-foreground disabled:opacity-30 hover:opacity-90 transition-opacity"
+              className="rounded-full p-1.5 bg-accent text-accent-foreground disabled:opacity-30 hover:opacity-90 transition-opacity shrink-0"
+              aria-label="Send prompt"
             >
-              <Send size={14} />
+              <Send size={13} />
             </button>
           </form>
         </div>

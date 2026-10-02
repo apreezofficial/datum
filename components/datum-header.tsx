@@ -83,28 +83,28 @@ export function DatumHeader({
 
       {/* Center: Vibe Code vs Audit Mode Toggle (when a repo/file is active) */}
       {activeItem && onToggleWorkspaceView && (
-        <div className="hidden sm:inline-flex items-center p-0.5 rounded-full border border-border bg-raised/50 text-xs font-mono">
+        <div className="inline-flex items-center p-0.5 rounded-full border border-border bg-raised/50 text-xs font-mono">
           <button
             type="button"
             onClick={() => onToggleWorkspaceView("vibe")}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+            className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-medium transition-colors ${
               workspaceView === "vibe"
                 ? "bg-accent text-accent-foreground shadow-xs"
                 : "text-secondary hover:text-text"
             }`}
           >
-            ✨ Vibe Code
+            Vibe Code
           </button>
           <button
             type="button"
             onClick={() => onToggleWorkspaceView("audit")}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+            className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] sm:text-xs font-medium transition-colors ${
               workspaceView === "audit"
                 ? "bg-accent text-accent-foreground shadow-xs"
                 : "text-secondary hover:text-text"
             }`}
           >
-            🔍 Audit
+            Audit
           </button>
         </div>
       )}

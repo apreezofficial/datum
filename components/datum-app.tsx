@@ -308,18 +308,28 @@ export function DatumApp() {
       status: "done",
     });
 
-    // STEP 4: Deeply read and parse every UI file across the codebase
-    for (let i = 0; i < treeData.uiFilesToRead.length; i++) {
-      const filePath = treeData.uiFilesToRead[i];
+    // STEP 4: Read and parse UI component files (live swiping ticker on a single step)
+    if (treeData.uiFilesToRead.length > 0) {
       pushStep({
-        id: `read-${filePath}-${i}`,
+        id: "read-files",
         icon: <FileCode size={14} className="text-secondary" />,
-        label: `Reading ${filePath} (${i + 1}/${treeData.uiFilesToRead.length})...`,
+        label: `Reading ${treeData.uiFilesToRead[0]} (1/${treeData.uiFilesToRead.length})...`,
         status: "running",
       });
-      // Realistic inspection delay so big repos take proper time to parse
-      await pause(220);
-      updateLastStep({ label: `Read ${filePath}`, status: "done" });
+
+      for (let i = 0; i < treeData.uiFilesToRead.length; i++) {
+        const filePath = treeData.uiFilesToRead[i];
+        updateLastStep({
+          label: `Read ${filePath} (${i + 1}/${treeData.uiFilesToRead.length})`,
+          status: "running",
+        });
+        await pause(160);
+      }
+
+      updateLastStep({
+        label: `Parsed ${treeData.uiFilesToRead.length} UI component files`,
+        status: "done",
+      });
     }
 
     // STEP 5: Run the AI audit
@@ -493,7 +503,11 @@ export function DatumApp() {
               onReset={resetToNew}
             />
           ) : (
-            <div className="h-full overflow-y-auto">
+            <div
+              ref={mainScrollRef as React.RefObject<HTMLDivElement>}
+              onScroll={handleScroll}
+              className="h-full overflow-y-auto"
+            >
               <AnalysisView
                 sourceType={sourceType}
                 activeItem={activeItem}
