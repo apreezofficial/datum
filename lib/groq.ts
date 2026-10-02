@@ -476,15 +476,18 @@ export async function auditCodebaseWithGroq(
 
   // If caller didn't provide files, attempt to fetch real live files from GitHub
   let filesToAudit = sampleFiles && sampleFiles.length > 0 ? sampleFiles : [];
-  const repoExists = targetUrl.includes("/");
+  const looksLikeGitHubRepo = targetUrl.includes("/") && !targetUrl.toLowerCase().includes("figma.com");
 
-  if (filesToAudit.length === 0 && !targetUrl.toLowerCase().includes("figma.com") && repoExists) {
+  if (filesToAudit.length === 0 && looksLikeGitHubRepo) {
     filesToAudit = await fetchRealRepositoryFiles(targetUrl);
   }
 
-  // If the repo doesn't exist / GitHub returned nothing and it looks like a real repo path, flag it
-  const looksLikeGitHubRepo = repoExists && !targetUrl.toLowerCase().includes("figma.com");
-  const repoNotFound = looksLikeGitHubRepo && filesToAudit.length === 0;
+  // Repo not found — stop here, don't waste an API call on Groq
+  if (looksLikeGitHubRepo && filesToAudit.length === 0) {
+    throw new Error(
+      `Repository "${targetUrl}" could not be accessed on GitHub. It may not exist, be private, or be empty.`
+    );
+  }
 
   const stack = await detectRepositoryStack(
     targetUrl,
@@ -498,8 +501,6 @@ Stack:
 - Manifest: ${stack.manifestName}
 - Styling System: ${stack.stylingSystem}
 
-${repoNotFound ? `NOTE: The repository "${targetUrl}" could not be fetched from GitHub (it may be private, non-existent, or empty). You MUST respond with an empty deviations array and driftScore of 0.` : ""}
-
 Your objective:
 Conduct a rigorous audit of design system drift and token non-conformance.
 Look for:
@@ -510,24 +511,30 @@ Look for:
 
 Return ONLY a valid JSON object matching this schema:
 {
-  "driftScore": number (0 if repo not found, otherwise 15 to 75),
+  "driftScore": number (15 to 75),
   "totalFilesScanned": number,
   "totalDeviations": number,
   "summary": string,
-  "repoFound": boolean (false if repository could not be fetched),
-  "deviations": []
+  "deviations": [
+    {
+      "file": string,
+      "line": number,
+      "currentValue": string,
+      "suggestedToken": string,
+      "suggestedValue": string,
+      "delta": string,
+      "confidence": number (88–98)
+    }
+  ]
 }
 
-${repoNotFound ? 'Since the repository was not found, return: {"driftScore":0,"totalFilesScanned":0,"totalDeviations":0,"summary":"Repository not found or inaccessible.","repoFound":false,"deviations":[]}' : "Provide at least 3-6 specific high-confidence deviations from the actual source files."}`;
+Provide at least 3-6 specific high-confidence deviations from the actual source files provided.`;
 
   const filesPrompt =
-    filesToAudit.length > 0
-      ? `Audit these actual source files fetched from ${targetUrl}:\n\n` +
-        filesToAudit
-          .map((f) => `=== FILE: ${f.path} ===\n${f.content}`)
-          .join("\n\n")
-      : `Audit repository ${targetUrl}. Analyze its key UI components, layout templates, and styling tokens for deviations against standard design tokens.`;
-
+    `Audit these actual source files fetched from ${targetUrl}:\n\n` +
+    filesToAudit
+      .map((f) => `=== FILE: ${f.path} ===\n${f.content}`)
+      .join("\n\n");
 
   try {
     const { content: rawJson, modelUsed } = await callGroqChat(
@@ -554,9 +561,7 @@ ${repoNotFound ? 'Since the repository was not found, return: {"driftScore":0,"t
       totalFilesScanned: parsed.totalFilesScanned ?? stack.fileCount,
       totalDeviations: totalDevs,
       summary: parsed.summary || (validDeviations.length === 0
-        ? repoNotFound
-          ? "Repository not found or inaccessible on GitHub."
-          : "No design deviations detected. Tokens are in full alignment!"
+        ? "No design deviations detected. Tokens are in full alignment!"
         : `${totalDevs} deviations detected across ${parsed.totalFilesScanned ?? stack.fileCount} UI files.`),
       deviations: validDeviations,
     };
