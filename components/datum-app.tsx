@@ -427,9 +427,9 @@ export function DatumApp() {
       ? [
           { id: "resolve", icon: <GitBranch size={14} className="text-secondary" />, label: `Resolved ${item.name}`, status: "done" },
           { id: "stack", icon: <Package size={14} className="text-secondary" />, label: "Detected project stack", status: "done" },
-          { id: "tree", icon: <FolderGit2 size={14} className="text-secondary" />, label: "Mapped UI component files", status: "done" },
+          { id: "tree", icon: <FolderGit2 size={14} className="text-secondary" />, label: "Mapped repository source files", status: "done" },
           { id: "audit", icon: <Compass size={14} className="text-secondary" />,
-            label: item.auditData ? `Audit completed: ${item.auditData.totalDeviations} deviations` : "Audit completed",
+            label: item.auditData ? `Audit completed: ${item.auditData.totalFindings || 0} issues mapped` : "Audit completed",
             status: "done" },
         ]
       : figmaSteps;

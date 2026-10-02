@@ -345,6 +345,133 @@ export async function callGroqChat(
 }
 
 /**
+ * Calls chat completions with streaming enabled, automatic multi-key rotation and model fallback
+ */
+export async function callGroqChatStream(
+  messages: GroqChatMessage[],
+  options: {
+    model?: string;
+    temperature?: number;
+    maxTokens?: number;
+  } = {}
+): Promise<{ stream: ReadableStream<Uint8Array>; modelUsed: string }> {
+  const keys = getAllApiKeys();
+
+  if (keys.length === 0) {
+    throw new Error("No API key defined in environment variables (GROQ_API_KEYS or GROQ_API_KEY)");
+  }
+
+  const requestedModel = options.model || DEFAULT_MODEL;
+  const modelsToAttempt = [
+    requestedModel,
+    ...FALLBACK_MODELS_CHAIN.filter((m) => m !== requestedModel),
+  ];
+
+  let lastError: Error | null = null;
+
+  for (const modelCandidate of modelsToAttempt) {
+    for (let keyAttempt = 0; keyAttempt < keys.length; keyAttempt++) {
+      const keyObj = pickNextKey(keys);
+      if (!keyObj) break;
+
+      const payload = {
+        model: modelCandidate,
+        messages,
+        temperature: options.temperature ?? 0.2,
+        max_tokens: options.maxTokens ?? 3000,
+        stream: true,
+      };
+
+      try {
+        const response = await fetch(GROQ_API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${keyObj.key}`,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        recordKeyLimits(keyObj.key, response);
+
+        if (response.status === 429) {
+          lastError = new Error(`Key ${keyObj.index + 1} rate limited (429). Rotating key...`);
+          continue;
+        }
+
+        if (!response.ok) {
+          const errText = await response.text();
+          lastError = new Error(`API error (${response.status}): ${errText}`);
+          continue;
+        }
+
+        if (!response.body) {
+          lastError = new Error("Response body is empty");
+          continue;
+        }
+
+        const encoder = new TextEncoder();
+        const decoder = new TextDecoder();
+        const reader = response.body.getReader();
+
+        let buffer = "";
+
+        const textStream = new ReadableStream<Uint8Array>({
+          async pull(controller) {
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) {
+                  controller.close();
+                  return;
+                }
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                  const trimmed = line.trim();
+                  if (!trimmed || trimmed.startsWith(":")) continue;
+                  if (trimmed === "data: [DONE]") {
+                    controller.close();
+                    return;
+                  }
+                  if (trimmed.startsWith("data: ")) {
+                    const jsonStr = trimmed.slice(6);
+                    try {
+                      const parsed = JSON.parse(jsonStr);
+                      const delta = parsed.choices?.[0]?.delta?.content;
+                      if (delta) {
+                        controller.enqueue(encoder.encode(delta));
+                      }
+                    } catch {
+                      // ignore parse error for partial or malformed chunk
+                    }
+                  }
+                }
+              }
+            } catch (err) {
+              controller.error(err);
+            }
+          },
+          cancel() {
+            reader.cancel();
+          },
+        });
+
+        return { stream: textStream, modelUsed: modelCandidate };
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        continue;
+      }
+    }
+  }
+
+  throw lastError || new Error("All API keys and models exhausted");
+}
+
+/**
  * Fetch real UI file samples from public GitHub repositories
  */
 async function fetchRealRepositoryFiles(
@@ -405,37 +532,56 @@ async function fetchRealRepositoryFiles(
     }
 
     if (treeEntries.length > 0) {
-      // Find representative UI components or stylesheets
-      const candidates = treeEntries.filter((f) => {
-        if (f.type !== "blob") return false;
-        const p = f.path.toLowerCase();
-        const isUi =
-          p.endsWith(".tsx") ||
-          p.endsWith(".jsx") ||
-          p.endsWith(".vue") ||
-          p.endsWith(".svelte") ||
-          p.endsWith(".blade.php") ||
-          p.endsWith(".html") ||
-          p.endsWith(".css");
-        const isComponentOrView =
-          p.includes("component") ||
-          p.includes("ui/") ||
-          p.includes("views/") ||
-          p.includes("pages/") ||
-          p.includes("app/") ||
-          p.includes("styles");
-        return isUi && isComponentOrView && !p.includes(".test.") && !p.includes(".spec.");
+      // Find representative core source files across the repository
+      const candidates = treeEntries
+        .filter((f) => f.type === "blob")
+        .map((f) => f.path)
+        .filter((p) => {
+          const lower = p.toLowerCase();
+          return (
+            !lower.startsWith(".") &&
+            !lower.includes("/.") &&
+            !lower.includes("node_modules/") &&
+            !lower.includes("dist/") &&
+            !lower.includes("build/") &&
+            !lower.includes("coverage/") &&
+            !lower.includes("vendor/") &&
+            !lower.endsWith(".png") &&
+            !lower.endsWith(".jpg") &&
+            !lower.endsWith(".svg") &&
+            !lower.endsWith(".lock") &&
+            !lower.endsWith("package-lock.json") &&
+            !lower.endsWith("pnpm-lock.yaml")
+          );
+        });
+
+      // Score files so real source code in packages/, src/, app/, lib/, server/ is picked
+      const ranked = candidates.sort((a, b) => {
+        const score = (path: string) => {
+          const p = path.toLowerCase();
+          let s = 0;
+          if (p.endsWith(".tsx") || p.endsWith(".jsx")) s += 100;
+          else if (p.endsWith(".ts") || p.endsWith(".js") || p.endsWith(".mjs")) s += 90;
+          else if (p.endsWith(".py") || p.endsWith(".go") || p.endsWith(".rs")) s += 85;
+          else if (p.endsWith(".vue") || p.endsWith(".svelte")) s += 85;
+          else if (p.endsWith(".css") || p.endsWith(".scss")) s += 60;
+          if (p.includes("src/") || p.includes("app/") || p.includes("packages/")) s += 50;
+          if (p.includes("components/") || p.includes("lib/") || p.includes("server/")) s += 40;
+          if (p.includes(".test.") || p.includes(".spec.")) s -= 60;
+          return s;
+        };
+        return score(b) - score(a);
       });
 
-      // Select up to 4 real components to analyze
-      const selected = candidates.slice(0, 4);
+      // Select up to 4 real core files to analyze
+      const selected = ranked.slice(0, 4);
 
-      for (const item of selected) {
+      for (const filePath of selected) {
         try {
           const controller = new AbortController();
           const timeout = setTimeout(() => controller.abort(), 3500);
           const rawRes = await fetch(
-            `https://raw.githubusercontent.com/${owner}/${repo}/${activeBranch}/${item.path}`,
+            `https://raw.githubusercontent.com/${owner}/${repo}/${activeBranch}/${filePath}`,
             {
               headers: { "User-Agent": "Datum-Agent" },
               signal: controller.signal,
@@ -447,7 +593,7 @@ async function fetchRealRepositoryFiles(
             const rawText = await rawRes.text();
             // Truncate if file is overly huge
             sampleFiles.push({
-              path: item.path,
+              path: filePath,
               content: rawText.length > 3500 ? rawText.slice(0, 3500) + "\n...[truncated]" : rawText,
             });
           }

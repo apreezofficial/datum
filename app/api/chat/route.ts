@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { callGroqChat, getAllApiKeys, DEFAULT_MODEL } from "@/lib/groq";
+import { callGroqChatStream, getAllApiKeys, DEFAULT_MODEL } from "@/lib/groq";
 
 export async function POST(req: Request) {
   try {
@@ -52,17 +52,18 @@ Stack detected: ${body.stackInfo?.language || "TypeScript"} · ${body.stackInfo?
       })),
     ];
 
-    const { content: reply, modelUsed } = await callGroqChat(chatMessages, {
+    const { stream, modelUsed } = await callGroqChatStream(chatMessages, {
       model: modelToUse,
       temperature: 0.3,
       maxTokens: 3000,
     });
 
-    return NextResponse.json({
-      success: true,
-      data: {
-        reply,
-        modelUsed,
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+        "x-model-used": modelUsed,
       },
     });
   } catch (error) {
