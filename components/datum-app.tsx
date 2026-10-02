@@ -67,6 +67,7 @@ export function DatumApp() {
   const [isFigmaConnected, setIsFigmaConnected] = React.useState(false);
   const [autopilot, setAutopilot] = React.useState(false);
   const [auditData, setAuditData] = React.useState<AuditData | null>(null);
+  const [auditError, setAuditError] = React.useState<string | null>(null);
   const [detectedStack, setDetectedStack] = React.useState<StackInfo | null>(null);
 
   // Model selection state
@@ -244,6 +245,7 @@ export function DatumApp() {
     setCriticalApproved(false);
     setCurrentStepIndex(0);
     setAuditData(null);
+    setAuditError(null);
 
     // Fast stack detection
     if (!isFigma) {
@@ -265,13 +267,12 @@ export function DatumApp() {
       .then((r) => r.json())
       .then((res) => {
         if (res?.success && res?.data) {
-          return res.data as AuditData;
+          return { data: res.data as AuditData, error: null };
         }
-        return null;
+        return { data: null, error: (res?.error as string) || "Audit failed. Repository may not exist or be inaccessible." };
       })
       .catch((err) => {
-        console.warn("Audit fetch failed:", err);
-        return null;
+        return { data: null, error: String(err) };
       });
 
     const maxProgressSteps = isFigma ? 3 : 5; // Animate up to the final step
@@ -286,13 +287,16 @@ export function DatumApp() {
     }, 280);
 
     // Wait for the real AI audit to finish before completing the final step and revealing results!
-    auditPromise.then((realData) => {
+    auditPromise.then(({ data: realData, error: realError }) => {
       clearInterval(interval);
       if (realData) {
         setAuditData(realData);
+        setAuditError(null);
         if (realData.stack) {
           setDetectedStack(realData.stack);
         }
+      } else if (realError) {
+        setAuditError(realError);
       }
 
       // Advance to 100% completed
@@ -304,9 +308,9 @@ export function DatumApp() {
         ? isFigma
           ? "12 token mismatches"
           : `Drift ${realData.driftScore} / 100`
-        : isFigma
-        ? "12 token mismatches"
-        : "Drift 48 / 100";
+        : realError
+        ? "Error"
+        : "No deviations";
 
       setHistory((prev) => [
         {
@@ -354,12 +358,14 @@ export function DatumApp() {
     setCriticalApproved(false);
     setCurrentStepIndex(0);
     setAuditData(null);
+    setAuditError(null);
     setDetectedStack(null);
   };
 
   const handleSelectHistory = (item: HistoryItem) => {
     setActiveItem(item.name);
     setSourceType(item.type);
+    setAuditError(null);
     if (item.auditData) {
       setAuditData(item.auditData);
       if (item.auditData.stack) {
@@ -435,6 +441,7 @@ export function DatumApp() {
               setStepsExpanded={setStepsExpanded}
               activeModel={activeModel}
               auditData={auditData}
+              auditError={auditError}
               criticalApproved={criticalApproved}
               isApproving={isApproving}
               isLoggedIn={isLoggedIn}

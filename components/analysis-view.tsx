@@ -28,6 +28,7 @@ interface AnalysisViewProps {
   setStepsExpanded: (expanded: boolean | ((prev: boolean) => boolean)) => void;
   activeModel: ModelOption;
   auditData: AuditData | null;
+  auditError: string | null;
   criticalApproved: boolean;
   isApproving: boolean;
   isLoggedIn: boolean;
@@ -50,6 +51,7 @@ export function AnalysisView({
   setStepsExpanded,
   activeModel,
   auditData,
+  auditError,
   criticalApproved,
   isApproving,
   isLoggedIn,
@@ -119,6 +121,37 @@ export function AnalysisView({
       {/* Specific Results & Critical Step (Distinct for GitHub vs Figma) */}
       {analysisComplete && (
         <div className="space-y-6 pt-4 border-t border-border-subtle">
+          {/* Error State — shown when audit failed (repo not found, private, API error) */}
+          {auditError && !auditData && (
+            <div className="border border-peak/40 bg-peak/5 rounded-lg p-5 space-y-3">
+              <div className="flex items-start gap-2.5">
+                <ShieldAlert size={18} className="text-peak shrink-0 mt-0.5" />
+                <div>
+                  <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-peak">
+                    Audit Failed
+                  </span>
+                  <h3 className="text-sm font-bold text-text mt-0.5">
+                    Could not analyze <code className="font-mono">{activeItem}</code>
+                  </h3>
+                  <p className="text-xs text-secondary mt-1 leading-relaxed">{auditError}</p>
+                </div>
+              </div>
+              <div className="pt-2 border-t border-border-subtle flex justify-end">
+                <button
+                  type="button"
+                  onClick={resetToNew}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded bg-surface border border-border text-text hover:bg-raised"
+                >
+                  <RefreshCw size={12} />
+                  Try another repository
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Only render GitHub/Figma results if there's no fatal error */}
+          {!auditError && (
+            <>
           {/* GITHUB FLOW RESULTS */}
           {sourceType === "github" ? (
             <div className="space-y-6">
@@ -472,6 +505,8 @@ export function AnalysisView({
                 )}
               </div>
             </div>
+          )}
+          </>
           )}
         </div>
       )}

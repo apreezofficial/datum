@@ -470,58 +470,26 @@ export async function auditCodebaseWithGroq(
   const keys = getAllApiKeys();
   const targetModel = preferredModel || DEFAULT_MODEL;
 
+  if (keys.length === 0) {
+    throw new Error("No Groq API key configured. Add GROQ_API_KEY to .env.local.");
+  }
+
   // If caller didn't provide files, attempt to fetch real live files from GitHub
   let filesToAudit = sampleFiles && sampleFiles.length > 0 ? sampleFiles : [];
-  if (filesToAudit.length === 0 && !targetUrl.toLowerCase().includes("figma.com")) {
+  const repoExists = targetUrl.includes("/");
+
+  if (filesToAudit.length === 0 && !targetUrl.toLowerCase().includes("figma.com") && repoExists) {
     filesToAudit = await fetchRealRepositoryFiles(targetUrl);
   }
+
+  // If the repo doesn't exist / GitHub returned nothing and it looks like a real repo path, flag it
+  const looksLikeGitHubRepo = repoExists && !targetUrl.toLowerCase().includes("figma.com");
+  const repoNotFound = looksLikeGitHubRepo && filesToAudit.length === 0;
 
   const stack = await detectRepositoryStack(
     targetUrl,
     filesToAudit.map((f) => f.path)
   );
-
-  // Fallback benchmark if no API keys configured
-  if (keys.length === 0) {
-    return {
-      source: targetUrl,
-      modelUsed: targetModel,
-      stack,
-      driftScore: 48,
-      totalFilesScanned: stack.fileCount,
-      totalDeviations: 38,
-      summary: `38 deviations detected across 14 UI files.`,
-      deviations: [
-        {
-          file: stack.ecosystem === "php" ? "resources/views/card.blade.php" : "components/Card.tsx",
-          line: 42,
-          currentValue: "p-[13px]",
-          suggestedToken: "p-3",
-          suggestedValue: "12px",
-          delta: "+1px",
-          confidence: 92,
-        },
-        {
-          file: stack.ecosystem === "php" ? "resources/views/header.blade.php" : "app/header.tsx",
-          line: 18,
-          currentValue: "#3b82f7",
-          suggestedToken: "var(--brand-500)",
-          suggestedValue: "#3b82f6",
-          delta: "1.4 dE",
-          confidence: 95,
-        },
-        {
-          file: stack.ecosystem === "php" ? "resources/views/modal.blade.php" : "components/Modal.tsx",
-          line: 77,
-          currentValue: "rounded-[7px]",
-          suggestedToken: "rounded-md",
-          suggestedValue: "6px",
-          delta: "+1px",
-          confidence: 90,
-        },
-      ],
-    };
-  }
 
   const systemPrompt = `You are Datum, an automated design system code auditor.
 The target repository is "${targetUrl}".
@@ -529,6 +497,8 @@ Stack:
 - Ecosystem: ${stack.ecosystem} (${stack.language})
 - Manifest: ${stack.manifestName}
 - Styling System: ${stack.stylingSystem}
+
+${repoNotFound ? `NOTE: The repository "${targetUrl}" could not be fetched from GitHub (it may be private, non-existent, or empty). You MUST respond with an empty deviations array and driftScore of 0.` : ""}
 
 Your objective:
 Conduct a rigorous audit of design system drift and token non-conformance.
@@ -540,24 +510,15 @@ Look for:
 
 Return ONLY a valid JSON object matching this schema:
 {
-  "driftScore": number (15 to 75),
-  "totalFilesScanned": number (e.g. ${stack.fileCount}),
-  "totalDeviations": number (total count of violations detected, e.g. 28 to 48),
-  "summary": string (concise summary like "38 deviations detected across 14 UI files."),
-  "deviations": [
-    {
-      "file": string (actual or realistic component file path),
-      "line": number,
-      "currentValue": string (the offending arbitrary class or hex value),
-      "suggestedToken": string (the design system token name, e.g. "p-3", "var(--brand-500)", "rounded-md"),
-      "suggestedValue": string (the token value, e.g. "12px", "#3b82f6", "6px"),
-      "delta": string (e.g. "+1px", "1.4 dE", "-0.5px"),
-      "confidence": number (between 88 and 98)
-    }
-  ]
+  "driftScore": number (0 if repo not found, otherwise 15 to 75),
+  "totalFilesScanned": number,
+  "totalDeviations": number,
+  "summary": string,
+  "repoFound": boolean (false if repository could not be fetched),
+  "deviations": []
 }
 
-Provide at least 3-6 specific high-confidence deviations from the codebase.`;
+${repoNotFound ? 'Since the repository was not found, return: {"driftScore":0,"totalFilesScanned":0,"totalDeviations":0,"summary":"Repository not found or inaccessible.","repoFound":false,"deviations":[]}' : "Provide at least 3-6 specific high-confidence deviations from the actual source files."}`;
 
   const filesPrompt =
     filesToAudit.length > 0
@@ -566,6 +527,7 @@ Provide at least 3-6 specific high-confidence deviations from the codebase.`;
           .map((f) => `=== FILE: ${f.path} ===\n${f.content}`)
           .join("\n\n")
       : `Audit repository ${targetUrl}. Analyze its key UI components, layout templates, and styling tokens for deviations against standard design tokens.`;
+
 
   try {
     const { content: rawJson, modelUsed } = await callGroqChat(
@@ -576,97 +538,31 @@ Provide at least 3-6 specific high-confidence deviations from the codebase.`;
       { model: targetModel, jsonMode: true, temperature: 0.2 }
     );
 
-    const parsed = JSON.parse(rawJson) as Partial<AuditResult>;
+    const parsed = JSON.parse(rawJson) as Partial<AuditResult> & { repoFound?: boolean };
 
-    const validDeviations = Array.isArray(parsed.deviations) && parsed.deviations.length > 0
-      ? parsed.deviations
-      : [
-          {
-            file: stack.ecosystem === "php" ? "resources/views/card.blade.php" : "components/Card.tsx",
-            line: 42,
-            currentValue: "p-[13px]",
-            suggestedToken: "p-3",
-            suggestedValue: "12px",
-            delta: "+1px",
-            confidence: 92,
-          },
-          {
-            file: stack.ecosystem === "php" ? "resources/views/header.blade.php" : "app/header.tsx",
-            line: 18,
-            currentValue: "#3b82f7",
-            suggestedToken: "var(--brand-500)",
-            suggestedValue: "#3b82f6",
-            delta: "1.4 dE",
-            confidence: 95,
-          },
-          {
-            file: stack.ecosystem === "php" ? "resources/views/modal.blade.php" : "components/Modal.tsx",
-            line: 77,
-            currentValue: "rounded-[7px]",
-            suggestedToken: "rounded-md",
-            suggestedValue: "6px",
-            delta: "+1px",
-            confidence: 90,
-          },
-        ];
+    // Real deviations only — never inject fake ones
+    const validDeviations = Array.isArray(parsed.deviations) ? parsed.deviations : [];
 
-    const drift = typeof parsed.driftScore === "number" && parsed.driftScore > 0
-      ? parsed.driftScore
-      : 48;
-
-    const totalDevs = parsed.totalDeviations && parsed.totalDeviations > 0
-      ? parsed.totalDeviations
-      : 38;
+    const drift = typeof parsed.driftScore === "number" ? parsed.driftScore : 0;
+    const totalDevs = typeof parsed.totalDeviations === "number" ? parsed.totalDeviations : validDeviations.length;
 
     return {
       source: targetUrl,
       modelUsed,
       stack,
       driftScore: drift,
-      totalFilesScanned: parsed.totalFilesScanned || stack.fileCount,
+      totalFilesScanned: parsed.totalFilesScanned ?? stack.fileCount,
       totalDeviations: totalDevs,
-      summary: parsed.summary || `${totalDevs} deviations detected across 14 UI files.`,
+      summary: parsed.summary || (validDeviations.length === 0
+        ? repoNotFound
+          ? "Repository not found or inaccessible on GitHub."
+          : "No design deviations detected. Tokens are in full alignment!"
+        : `${totalDevs} deviations detected across ${parsed.totalFilesScanned ?? stack.fileCount} UI files.`),
       deviations: validDeviations,
     };
   } catch (err) {
-    console.warn("Audit AI call failed, using stack-aware benchmark:", err);
-    return {
-      source: targetUrl,
-      modelUsed: targetModel,
-      stack,
-      driftScore: 48,
-      totalFilesScanned: stack.fileCount,
-      totalDeviations: 38,
-      summary: "38 deviations detected across 14 UI files.",
-      deviations: [
-        {
-          file: stack.ecosystem === "php" ? "resources/views/card.blade.php" : "components/Card.tsx",
-          line: 42,
-          currentValue: "p-[13px]",
-          suggestedToken: "p-3",
-          suggestedValue: "12px",
-          delta: "+1px",
-          confidence: 92,
-        },
-        {
-          file: stack.ecosystem === "php" ? "resources/views/header.blade.php" : "app/header.tsx",
-          line: 18,
-          currentValue: "#3b82f7",
-          suggestedToken: "var(--brand-500)",
-          suggestedValue: "#3b82f6",
-          delta: "1.4 dE",
-          confidence: 95,
-        },
-        {
-          file: stack.ecosystem === "php" ? "resources/views/modal.blade.php" : "components/Modal.tsx",
-          line: 77,
-          currentValue: "rounded-[7px]",
-          suggestedToken: "rounded-md",
-          suggestedValue: "6px",
-          delta: "+1px",
-          confidence: 90,
-        },
-      ],
-    };
+    // Rethrow — the API route will return { success: false, error: message }
+    // The frontend will see auditData = null and show the clean "no data" state
+    throw err;
   }
 }
