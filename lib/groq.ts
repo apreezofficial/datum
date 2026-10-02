@@ -619,10 +619,19 @@ Return ONLY valid JSON:
         !isNaN(d.confidence)
     );
 
-    const drift = typeof parsed.driftScore === "number" && !isNaN(parsed.driftScore)
-      ? Math.min(100, Math.max(0, parsed.driftScore))
-      : 0;
+    // Compute driftScore deterministically based on real deviations found:
+    // If 0 deviations, drift is strictly 0.
+    // Otherwise, calculate proportionally based on deviations vs files scanned.
     const totalDevs = validDeviations.length;
+    let drift = 0;
+    if (totalDevs > 0) {
+      // Base score on deviations density + severity, capped at 100
+      const deviationsPerFile = totalDevs / Math.max(1, filesToAudit.length);
+      const calculated = Math.round(Math.min(100, Math.max(10, deviationsPerFile * 25 + totalDevs * 4)));
+      drift = typeof parsed.driftScore === "number" && !isNaN(parsed.driftScore) && parsed.driftScore > 0
+        ? Math.min(100, Math.max(calculated, parsed.driftScore))
+        : calculated;
+    }
 
     return {
       source: targetUrl,

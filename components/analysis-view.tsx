@@ -231,30 +231,31 @@ export function AnalysisView({
                 </div>
               </div>
 
-              {/* GITHUB CRITICAL STEP: OPEN FIX PR */}
-              <div
-                className={`border rounded-lg p-5 transition-all ${
-                  criticalApproved
-                    ? "border-emerald-500/40 bg-emerald-50/20 dark:bg-emerald-950/10"
-                    : "border-ochre/60 bg-ochre/5"
-                }`}
-              >
-                {!criticalApproved ? (
-                  <div className="space-y-3.5">
-                    <div className="flex items-start gap-2.5">
-                      <ShieldAlert size={18} className="text-ochre shrink-0 mt-0.5" />
-                      <div>
-                        <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-ochre">
-                          Critical Action Authorization
-                        </span>
-                        <h3 className="text-sm font-bold text-text mt-0.5">
-                          Allow Datum to Open Fix Pull Request on {activeItem}?
-                        </h3>
-                        <p className="text-xs text-secondary mt-1 leading-relaxed">
-                          This will push branch <code className="font-mono text-text">datum/fix-design-drift</code> with {auditData?.totalDeviations ?? 0} token fixes and open a PR on GitHub.
-                        </p>
+              {/* GITHUB CRITICAL STEP: OPEN FIX PR (Only if deviations exist) */}
+              {(auditData?.totalDeviations ?? 0) > 0 ? (
+                <div
+                  className={`border rounded-lg p-5 transition-all ${
+                    criticalApproved
+                      ? "border-emerald-500/40 bg-emerald-50/20 dark:bg-emerald-950/10"
+                      : "border-ochre/60 bg-ochre/5"
+                  }`}
+                >
+                  {!criticalApproved ? (
+                    <div className="space-y-3.5">
+                      <div className="flex items-start gap-2.5">
+                        <ShieldAlert size={18} className="text-ochre shrink-0 mt-0.5" />
+                        <div>
+                          <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-ochre">
+                            Critical Action Authorization
+                          </span>
+                          <h3 className="text-sm font-bold text-text mt-0.5">
+                            Allow Datum to Open Fix Pull Request on {activeItem}?
+                          </h3>
+                          <p className="text-xs text-secondary mt-1 leading-relaxed">
+                            This will push branch <code className="font-mono text-text">datum/fix-design-drift</code> with {auditData?.totalDeviations ?? 0} token fixes and open a PR on GitHub.
+                          </p>
+                        </div>
                       </div>
-                    </div>
 
                     <div className="pt-2 border-t border-border-subtle">
                       {!isLoggedIn ? (
@@ -351,6 +352,27 @@ export function AnalysisView({
                   </div>
                 )}
               </div>
+              ) : (
+                <div className="border border-emerald-500/40 bg-emerald-500/5 rounded-lg p-5 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <ShieldCheck size={20} className="text-emerald-500 shrink-0" />
+                    <div>
+                      <h4 className="text-sm font-semibold text-text">Design System In Full Alignment</h4>
+                      <p className="text-xs text-secondary mt-0.5">
+                        Zero token deviations found across all surveyed UI files on <code className="font-mono text-text">{activeItem}</code>. No Pull Request needed.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={resetToNew}
+                    className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-border bg-surface text-text hover:bg-raised"
+                  >
+                    <RefreshCw size={12} />
+                    <span>Audit another</span>
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             /* ================= FIGMA FLOW RESULTS ================= */
