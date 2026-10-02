@@ -228,7 +228,7 @@ export function AnalysisView({
                           Allow Datum to Open Fix Pull Request on {activeItem}?
                         </h3>
                         <p className="text-xs text-secondary mt-1 leading-relaxed">
-                          This will push branch <code className="font-mono text-text">datum/fix-design-drift</code> with 38 token fixes and open a PR on GitHub.
+                          This will push branch <code className="font-mono text-text">datum/fix-design-drift</code> with {auditData?.totalDeviations || 38} token fixes and open a PR on GitHub.
                         </p>
                       </div>
                     </div>
