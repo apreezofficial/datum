@@ -460,29 +460,81 @@ async function fetchRealRepositoryFiles(
 }
 
 /**
+ * Fetch specific files by path from a GitHub repo
+ */
+async function fetchFilesByPaths(
+  owner: string,
+  repo: string,
+  branch: string,
+  paths: string[]
+): Promise<Array<{ path: string; content: string }>> {
+  const results: Array<{ path: string; content: string }> = [];
+
+  for (const filePath of paths) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000);
+      const res = await fetch(
+        `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${filePath}`,
+        { headers: { "User-Agent": "Datum-Agent" }, signal: controller.signal }
+      );
+      clearTimeout(timeout);
+
+      if (res.ok) {
+        const text = await res.text();
+        results.push({
+          path: filePath,
+          content: text.length > 4000 ? text.slice(0, 4000) + "\n...[truncated]" : text,
+        });
+      }
+    } catch {
+      // skip file on error
+    }
+  }
+
+  return results;
+}
+
+/**
  * Audits code against a design system using selected model and multi-key pool
  */
 export async function auditCodebaseWithGroq(
   targetUrl: string,
-  sampleFiles?: Array<{ path: string; content: string }>,
-  preferredModel?: string
+  options: {
+    sampleFiles?: Array<{ path: string; content: string }>;
+    model?: string;
+    branch?: string;
+    filePaths?: string[];
+    fullTreeSample?: string[];
+  } = {}
 ): Promise<AuditResult> {
   const keys = getAllApiKeys();
-  const targetModel = preferredModel || DEFAULT_MODEL;
+  const targetModel = options.model || DEFAULT_MODEL;
 
   if (keys.length === 0) {
     throw new Error("No Groq API key configured. Add GROQ_API_KEY to .env.local.");
   }
 
-  // If caller didn't provide files, attempt to fetch real live files from GitHub
-  let filesToAudit = sampleFiles && sampleFiles.length > 0 ? sampleFiles : [];
-  const looksLikeGitHubRepo = targetUrl.includes("/") && !targetUrl.toLowerCase().includes("figma.com");
+  const looksLikeGitHubRepo =
+    targetUrl.includes("/") && !targetUrl.toLowerCase().includes("figma.com");
 
-  if (filesToAudit.length === 0 && looksLikeGitHubRepo) {
+  let filesToAudit: Array<{ path: string; content: string }> = [];
+
+  if (options.sampleFiles && options.sampleFiles.length > 0) {
+    // Caller provided files directly
+    filesToAudit = options.sampleFiles;
+  } else if (looksLikeGitHubRepo && options.filePaths && options.filePaths.length > 0 && options.branch) {
+    // Fetch specific paths the frontend already identified via /api/repo/tree
+    const parts = targetUrl.split("/");
+    const owner = parts[0] === "shadcn" ? "shadcn-ui" : parts[0];
+    const repo = parts[1];
+    filesToAudit = await fetchFilesByPaths(owner, repo, options.branch, options.filePaths);
+  } else if (looksLikeGitHubRepo) {
+    // Fallback: discover files ourselves
     filesToAudit = await fetchRealRepositoryFiles(targetUrl);
   }
 
-  // Repo not found — stop here, don't waste an API call on Groq
+  // Repo not found — stop here
   if (looksLikeGitHubRepo && filesToAudit.length === 0) {
     throw new Error(
       `Repository "${targetUrl}" could not be accessed on GitHub. It may not exist, be private, or be empty.`
@@ -494,47 +546,49 @@ export async function auditCodebaseWithGroq(
     filesToAudit.map((f) => f.path)
   );
 
-  const systemPrompt = `You are Datum, an automated design system code auditor.
-The target repository is "${targetUrl}".
-Stack:
-- Ecosystem: ${stack.ecosystem} (${stack.language})
-- Manifest: ${stack.manifestName}
-- Styling System: ${stack.stylingSystem}
+  // Full tree as context for the AI (if provided)
+  const treeContext = options.fullTreeSample && options.fullTreeSample.length > 0
+    ? `\nFull repository file tree (${options.fullTreeSample.length} files):\n${options.fullTreeSample.join("\n")}\n`
+    : "";
 
-Your objective:
-Conduct a rigorous audit of design system drift and token non-conformance.
+  const systemPrompt = `You are Datum, an expert design system code auditor.
+Repository: "${targetUrl}"
+Stack: ${stack.ecosystem} · ${stack.language} · ${stack.stylingSystem}
+${treeContext}
+TASK: Audit the provided source files for design system drift.
+Look ONLY at actual code in the files provided. Report ONLY real violations you see in the code.
+
 Look for:
-1. Arbitrary non-token spacing/padding/margins (e.g. p-[13px], mt-[22px], style={{ padding: '13px' }} instead of p-3 (12px), p-3.5 (14px), mt-5 (20px))
-2. Hardcoded hex colors (e.g. #3b82f7, #e5e7eb instead of semantic tokens like var(--brand-500) (#3b82f6), border-gray-200)
-3. Non-scale arbitrary border radii (e.g. rounded-[7px] instead of rounded-md (6px))
-4. Inconsistent sizing or border widths (e.g. border-[1.5px])
+1. Arbitrary spacing (e.g. p-[13px], style={{ padding: '13px' }}) — suggest token (e.g. p-3 = 12px)
+2. Hardcoded hex colors (e.g. #3b82f7) — suggest CSS variable (e.g. var(--brand-500))
+3. Arbitrary border radius (e.g. rounded-[7px]) — suggest scale value (e.g. rounded-md = 6px)
+4. Non-scale font sizes, widths, gaps
 
-Return ONLY a valid JSON object matching this schema:
+IMPORTANT: Every deviation MUST have ALL these fields populated with real values from the code:
+- "file": exact file path from the files provided
+- "line": actual line number in that file
+- "currentValue": the EXACT problematic class or value found in the code (e.g. "p-[13px]", "#3b82f7")
+- "suggestedToken": the design token name to use instead (e.g. "p-3", "var(--brand-500)", "rounded-md")  
+- "suggestedValue": the resolved value of that token (e.g. "12px", "#3b82f6", "6px")
+- "delta": the difference (e.g. "+1px", "1.4 dE", "-2px")
+- "confidence": integer between 88 and 98
+
+Do NOT return deviations with empty strings for any field. If you can't find a specific violation in the code, do not include it.
+
+Return ONLY valid JSON:
 {
-  "driftScore": number (15 to 75),
-  "totalFilesScanned": number,
+  "driftScore": number 0-100,
+  "totalFilesScanned": ${filesToAudit.length},
   "totalDeviations": number,
   "summary": string,
-  "deviations": [
-    {
-      "file": string,
-      "line": number,
-      "currentValue": string,
-      "suggestedToken": string,
-      "suggestedValue": string,
-      "delta": string,
-      "confidence": number (88–98)
-    }
-  ]
-}
-
-Provide at least 3-6 specific high-confidence deviations from the actual source files provided.`;
+  "deviations": [ { "file": string, "line": number, "currentValue": string, "suggestedToken": string, "suggestedValue": string, "delta": string, "confidence": number } ]
+}`;
 
   const filesPrompt =
-    `Audit these actual source files fetched from ${targetUrl}:\n\n` +
+    `Here are the actual source files from ${targetUrl} to audit:\n\n` +
     filesToAudit
       .map((f) => `=== FILE: ${f.path} ===\n${f.content}`)
-      .join("\n\n");
+      .join("\n\n---\n\n");
 
   try {
     const { content: rawJson, modelUsed } = await callGroqChat(
@@ -542,32 +596,50 @@ Provide at least 3-6 specific high-confidence deviations from the actual source 
         { role: "system", content: systemPrompt },
         { role: "user", content: filesPrompt },
       ],
-      { model: targetModel, jsonMode: true, temperature: 0.2 }
+      { model: targetModel, jsonMode: true, temperature: 0.1 }
     );
 
-    const parsed = JSON.parse(rawJson) as Partial<AuditResult> & { repoFound?: boolean };
+    const parsed = JSON.parse(rawJson) as Partial<AuditResult>;
 
-    // Real deviations only — never inject fake ones
-    const validDeviations = Array.isArray(parsed.deviations) ? parsed.deviations : [];
+    // Filter deviations — only keep ones with all required fields populated
+    const rawDeviations = Array.isArray(parsed.deviations) ? parsed.deviations : [];
+    const validDeviations = rawDeviations.filter(
+      (d) =>
+        d.file &&
+        typeof d.line === "number" &&
+        d.currentValue &&
+        d.currentValue.trim() !== "" &&
+        d.suggestedToken &&
+        d.suggestedToken.trim() !== "" &&
+        d.suggestedValue &&
+        d.suggestedValue.trim() !== "" &&
+        d.delta !== undefined &&
+        String(d.delta).trim() !== "" &&
+        typeof d.confidence === "number" &&
+        !isNaN(d.confidence)
+    );
 
-    const drift = typeof parsed.driftScore === "number" ? parsed.driftScore : 0;
-    const totalDevs = typeof parsed.totalDeviations === "number" ? parsed.totalDeviations : validDeviations.length;
+    const drift = typeof parsed.driftScore === "number" && !isNaN(parsed.driftScore)
+      ? Math.min(100, Math.max(0, parsed.driftScore))
+      : 0;
+    const totalDevs = validDeviations.length;
 
     return {
       source: targetUrl,
       modelUsed,
       stack,
       driftScore: drift,
-      totalFilesScanned: parsed.totalFilesScanned ?? stack.fileCount,
+      totalFilesScanned: filesToAudit.length,
       totalDeviations: totalDevs,
-      summary: parsed.summary || (validDeviations.length === 0
-        ? "No design deviations detected. Tokens are in full alignment!"
-        : `${totalDevs} deviations detected across ${parsed.totalFilesScanned ?? stack.fileCount} UI files.`),
+      summary:
+        parsed.summary?.trim() ||
+        (totalDevs === 0
+          ? "No design deviations detected. Tokens are in full alignment!"
+          : `${totalDevs} deviation${totalDevs === 1 ? "" : "s"} detected across ${filesToAudit.length} UI files.`),
       deviations: validDeviations,
     };
   } catch (err) {
-    // Rethrow — the API route will return { success: false, error: message }
-    // The frontend will see auditData = null and show the clean "no data" state
     throw err;
   }
 }
+

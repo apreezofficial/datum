@@ -22,7 +22,6 @@ interface AnalysisViewProps {
   activeItem: string;
   isAnalyzing: boolean;
   analysisComplete: boolean;
-  currentStepIndex: number;
   currentSteps: StepItem[];
   stepsExpanded: boolean;
   setStepsExpanded: (expanded: boolean | ((prev: boolean) => boolean)) => void;
@@ -45,7 +44,6 @@ export function AnalysisView({
   activeItem,
   isAnalyzing,
   analysisComplete,
-  currentStepIndex,
   currentSteps,
   stepsExpanded,
   setStepsExpanded,
@@ -78,7 +76,11 @@ export function AnalysisView({
           )}
           <span>
             {isAnalyzing
-              ? `Step ${Math.min(currentStepIndex + 1, currentSteps.length)} of ${currentSteps.length} in progress...`
+              ? (() => {
+                  const runningIdx = currentSteps.findIndex((s) => s.status === "running");
+                  const pos = runningIdx >= 0 ? runningIdx + 1 : currentSteps.length + 1;
+                  return `Step ${pos} in progress...`;
+                })()
               : auditError && !auditData
               ? `${currentSteps.length} steps — audit failed`
               : `${currentSteps.length} steps completed`}

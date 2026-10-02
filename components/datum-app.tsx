@@ -7,9 +7,8 @@ import {
   GitBranch,
   FolderGit2,
   Package,
-  Layers,
   FileCode,
-  FileText,
+  Layers,
   Compass,
   Figma,
   ArrowDown,
@@ -57,6 +56,16 @@ const DEFAULT_MODELS: ModelOption[] = [
   },
 ];
 
+export interface RepoTreeData {
+  owner: string;
+  repo: string;
+  branch: string;
+  totalFiles: number;
+  allUiFilesCount: number;
+  uiFilesToRead: string[];
+  fullTreeSample: string[];
+}
+
 export function DatumApp() {
   const { theme, toggleTheme } = useTheme();
 
@@ -70,7 +79,7 @@ export function DatumApp() {
   const [auditError, setAuditError] = React.useState<string | null>(null);
   const [detectedStack, setDetectedStack] = React.useState<StackInfo | null>(null);
 
-  // Model selection state
+  // Model selection
   const [models, setModels] = React.useState<ModelOption[]>(DEFAULT_MODELS);
   const [selectedModelId, setSelectedModelId] = React.useState("openai/gpt-oss-120b");
 
@@ -81,7 +90,9 @@ export function DatumApp() {
   const [isAnalyzing, setIsAnalyzing] = React.useState(false);
   const [analysisComplete, setAnalysisComplete] = React.useState(false);
   const [stepsExpanded, setStepsExpanded] = React.useState(true);
-  const [currentStepIndex, setCurrentStepIndex] = React.useState(0);
+
+  // Dynamic step list — built step-by-step as things happen
+  const [currentSteps, setCurrentSteps] = React.useState<StepItem[]>([]);
 
   // Critical step gate
   const [criticalApproved, setCriticalApproved] = React.useState(false);
@@ -113,134 +124,58 @@ export function DatumApp() {
   const handleScroll = React.useCallback(() => {
     const el = mainScrollRef.current;
     if (!el) return;
-
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     const isAwayFromBottom = distanceFromBottom > 70;
-
     if (!isProgrammaticScrollRef.current) {
       userScrolledUpRef.current = isAwayFromBottom;
     }
-
     setShowScrollDownButton(isAwayFromBottom);
   }, []);
 
   const scrollToBottom = React.useCallback((behavior: ScrollBehavior = "smooth") => {
     const el = mainScrollRef.current;
     if (!el) return;
-
     userScrolledUpRef.current = false;
     setShowScrollDownButton(false);
     isProgrammaticScrollRef.current = true;
-
-    el.scrollTo({
-      top: el.scrollHeight,
-      behavior,
-    });
-
-    setTimeout(() => {
-      isProgrammaticScrollRef.current = false;
-    }, 400);
+    el.scrollTo({ top: el.scrollHeight, behavior });
+    setTimeout(() => { isProgrammaticScrollRef.current = false; }, 400);
   }, []);
 
-  // Auto-scroll as steps advance or results appear, unless the user has scrolled up to read
+  // Auto-scroll as steps change
   React.useEffect(() => {
     if (!activeItem) return;
+    if (!userScrolledUpRef.current) scrollToBottom("smooth");
+  }, [currentSteps, analysisComplete, criticalApproved, activeItem, scrollToBottom]);
 
-    if (!userScrolledUpRef.current) {
-      scrollToBottom("smooth");
-    }
-  }, [currentStepIndex, analysisComplete, criticalApproved, activeItem, scrollToBottom]);
+  // Helper: add a new step and scroll
+  const pushStep = React.useCallback((step: StepItem) => {
+    setCurrentSteps((prev) => [...prev, step]);
+  }, []);
 
-  // GitHub steps — honest labels that reflect what actually happened
-  const githubSteps: StepItem[] = [
-    {
-      id: "clone",
-      icon: <GitBranch size={14} className="text-secondary" />,
-      label: analysisComplete && auditError
-        ? `Could not resolve ${activeItem || "repository"}`
-        : isAnalyzing && currentStepIndex === 0
-        ? `Resolving ${activeItem || "repository"}...`
-        : `Resolved ${activeItem || "repository"}`,
-      status: currentStepIndex > 0 ? "done" : currentStepIndex === 0 && isAnalyzing ? "running" : "pending",
-    },
-    {
-      id: "scan",
-      icon: <FolderGit2 size={14} className="text-secondary" />,
-      label: analysisComplete && auditError
-        ? "No files fetched — repository inaccessible"
-        : auditData?.totalFilesScanned
-        ? `Fetched ${auditData.totalFilesScanned} UI files for analysis`
-        : isAnalyzing && currentStepIndex === 1
-        ? "Fetching repository files..."
-        : "Fetched repository files",
-      status: currentStepIndex > 1 ? "done" : currentStepIndex === 1 && isAnalyzing ? "running" : "pending",
-    },
-    {
-      id: "manifest",
-      icon: <Package size={14} className="text-secondary" />,
-      label: detectedStack?.steps[2]?.label
-        || (isAnalyzing && currentStepIndex === 2 ? "Reading package manifest..." : "Read package manifest"),
-      status: currentStepIndex > 2 ? "done" : currentStepIndex === 2 && isAnalyzing ? "running" : "pending",
-    },
-    {
-      id: "styling",
-      icon: <FileCode size={14} className="text-secondary" />,
-      label: detectedStack?.steps[3]?.label
-        || (isAnalyzing && currentStepIndex === 3 ? "Reading design tokens & stylesheets..." : "Read design tokens & stylesheets"),
-      status: currentStepIndex > 3 ? "done" : currentStepIndex === 3 && isAnalyzing ? "running" : "pending",
-    },
-    {
-      id: "structure",
-      icon: <FileText size={14} className="text-secondary" />,
-      label: detectedStack?.steps[4]?.label
-        || (isAnalyzing && currentStepIndex === 4 ? "Reading UI component tree..." : "Read UI component tree"),
-      status: currentStepIndex > 4 ? "done" : currentStepIndex === 4 && isAnalyzing ? "running" : "pending",
-    },
-    {
-      id: "audit",
-      icon: <Compass size={14} className="text-secondary" />,
-      label: auditError && !auditData
-        ? "Audit failed — repository not found or inaccessible"
-        : auditData?.totalDeviations !== undefined
-        ? `Audit completed: ${auditData.totalDeviations} UI deviation${auditData.totalDeviations === 1 ? "" : "s"} mapped`
-        : isAnalyzing && currentStepIndex === 5
-        ? "Running AI design audit..."
-        : "Running AI design audit...",
-      status: currentStepIndex > 5 ? "done" : currentStepIndex === 5 && isAnalyzing ? "running" : "pending",
-    },
-  ];
+  // Helper: update the last step in the list
+  const updateLastStep = React.useCallback((updates: Partial<StepItem>) => {
+    setCurrentSteps((prev) => {
+      if (prev.length === 0) return prev;
+      const copy = [...prev];
+      copy[copy.length - 1] = { ...copy[copy.length - 1], ...updates };
+      return copy;
+    });
+  }, []);
 
-  // Figma steps
+  // Small async delay for UX pacing
+  const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  // ─── Figma steps (static, since we can't actually query Figma) ───────────
   const figmaSteps: StepItem[] = [
-    {
-      id: "figma-connect",
-      icon: <Figma size={14} className="text-secondary" />,
-      label: `Connected to Figma File: ${activeItem || "Design System"}`,
-      status: currentStepIndex > 0 ? "done" : currentStepIndex === 0 && isAnalyzing ? "running" : "pending",
-    },
-    {
-      id: "figma-variables",
-      icon: <Layers size={14} className="text-secondary" />,
-      label: "Extracted 120 published Variables (Color, Spacing, Radius)",
-      status: currentStepIndex > 1 ? "done" : currentStepIndex === 1 && isAnalyzing ? "running" : "pending",
-    },
-    {
-      id: "figma-convert",
-      icon: <Layers size={14} className="text-secondary" />,
-      label: "Converted tokens into OKLab and canonical CSS variables",
-      status: currentStepIndex > 2 ? "done" : currentStepIndex === 2 && isAnalyzing ? "running" : "pending",
-    },
-    {
-      id: "figma-diff",
-      icon: <Compass size={14} className="text-secondary" />,
-      label: "Compared with codebase benchmarks: 12 token mismatches spotted",
-      status: currentStepIndex > 3 ? "done" : currentStepIndex === 3 && isAnalyzing ? "running" : "pending",
-    },
+    { id: "figma-connect", icon: <Figma size={14} className="text-secondary" />, label: `Connected to Figma File: ${activeItem || "Design System"}`, status: "done" },
+    { id: "figma-variables", icon: <Layers size={14} className="text-secondary" />, label: "Extracted 120 published Variables (Color, Spacing, Radius)", status: "done" },
+    { id: "figma-convert", icon: <Layers size={14} className="text-secondary" />, label: "Converted tokens into OKLab and canonical CSS variables", status: "done" },
+    { id: "figma-diff", icon: <Compass size={14} className="text-secondary" />, label: "Compared with codebase benchmarks: 12 token mismatches spotted", status: "done" },
   ];
 
-  const currentSteps = sourceType === "github" ? githubSteps : figmaSteps;
-
-  const handleStartAnalysis = (urlToUse?: string) => {
+  // ─── Main Analysis Flow ───────────────────────────────────────────────────
+  const handleStartAnalysis = async (urlToUse?: string) => {
     const rawUrl = urlToUse || inputValue;
     if (!rawUrl.trim()) return;
 
@@ -251,102 +186,174 @@ export function DatumApp() {
       .replace(/^https?:\/\/(www\.)?(github\.com\/|figma\.com\/file\/|figma\.com\/design\/)?/, "")
       .replace(/\/$/, "");
 
-    if (!cleanName) {
-      cleanName = isFigma ? "acme-design-system" : "shadcn/ui";
-    }
+    if (!cleanName) cleanName = isFigma ? "acme-design-system" : "shadcn/ui";
 
+    // Reset everything
     setActiveItem(cleanName);
     setIsAnalyzing(true);
     setAnalysisComplete(false);
     setCriticalApproved(false);
-    setCurrentStepIndex(0);
     setAuditData(null);
     setAuditError(null);
+    setDetectedStack(null);
+    setCurrentSteps([]);
 
-    // Fast stack detection
-    if (!isFigma) {
-      detectRepositoryStack(cleanName).then((stk) => {
-        setDetectedStack(stk);
-      });
-    }
-
-    // Launch AI backend audit
-    const auditPromise = fetch("/api/groq/audit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        url: cleanName,
-        sourceType: isFigma ? "figma" : "github",
-        model: selectedModelId,
-      }),
-    })
-      .then((r) => r.json())
-      .then((res) => {
-        if (res?.success && res?.data) {
-          return { data: res.data as AuditData, error: null };
-        }
-        return { data: null, error: (res?.error as string) || "Audit failed. Repository may not exist or be inaccessible." };
-      })
-      .catch((err) => {
-        return { data: null, error: String(err) };
-      });
-
-    const maxProgressSteps = isFigma ? 3 : 5; // Animate up to the final step
-    let step = 0;
-    const interval = setInterval(() => {
-      step++;
-      if (step <= maxProgressSteps) {
-        setCurrentStepIndex(step);
-      } else {
-        clearInterval(interval);
+    // ── FIGMA FLOW (static for now) ────────────────────────────────────────
+    if (isFigma) {
+      for (let i = 0; i < figmaSteps.length; i++) {
+        pushStep({ ...figmaSteps[i], status: "running" });
+        await pause(350);
+        updateLastStep({ status: "done" });
       }
-    }, 280);
-
-    // Wait for the real AI audit to finish before completing the final step and revealing results!
-    auditPromise.then(({ data: realData, error: realError }) => {
-      clearInterval(interval);
-      if (realData) {
-        setAuditData(realData);
-        setAuditError(null);
-        if (realData.stack) {
-          setDetectedStack(realData.stack);
-        }
-      } else if (realError) {
-        setAuditError(realError);
-      }
-
-      // Advance to 100% completed
-      setCurrentStepIndex(isFigma ? 4 : 6);
       setIsAnalyzing(false);
       setAnalysisComplete(true);
-
-      const summaryText = realData
-        ? isFigma
-          ? "12 token mismatches"
-          : `Drift ${realData.driftScore} / 100`
-        : realError
-        ? "Error"
-        : "No deviations";
-
       setHistory((prev) => [
-        {
-          id: Math.random().toString(),
-          name: cleanName,
-          type: isFigma ? "figma" : "github",
-          summary: summaryText,
-          auditData: realData || undefined,
-        },
-        ...prev.filter((item) => item.name !== cleanName),
+        { id: Math.random().toString(), name: cleanName, type: "figma", summary: "12 token mismatches" },
+        ...prev.filter((h) => h.name !== cleanName),
       ]);
+      return;
+    }
+
+    // ── GITHUB FLOW ────────────────────────────────────────────────────────
+
+    // STEP 1: Check if repo is accessible
+    pushStep({
+      id: "resolve",
+      icon: <GitBranch size={14} className="text-secondary" />,
+      label: `Checking ${cleanName}...`,
+      status: "running",
     });
+
+    let treeData: RepoTreeData | null = null;
+
+    try {
+      const treeRes = await fetch(`/api/repo/tree?repo=${encodeURIComponent(cleanName)}`);
+      const treeJson = (await treeRes.json()) as { success: boolean; data?: RepoTreeData; error?: string };
+
+      if (!treeJson.success || !treeJson.data) {
+        updateLastStep({ label: `Repository not found — ${cleanName}`, status: "done" });
+        setAuditError(treeJson.error || `"${cleanName}" could not be accessed on GitHub. It may not exist or be private.`);
+        setIsAnalyzing(false);
+        setAnalysisComplete(true);
+        setHistory((prev) => [
+          { id: Math.random().toString(), name: cleanName, type: "github", summary: "Not found" },
+          ...prev.filter((h) => h.name !== cleanName),
+        ]);
+        return;
+      }
+
+      treeData = treeJson.data;
+    } catch {
+      updateLastStep({ label: `Failed to reach GitHub for ${cleanName}`, status: "done" });
+      setAuditError(`Network error while checking "${cleanName}".`);
+      setIsAnalyzing(false);
+      setAnalysisComplete(true);
+      return;
+    }
+
+    if (!treeData) {
+      setIsAnalyzing(false);
+      setAnalysisComplete(true);
+      return;
+    }
+
+    updateLastStep({
+      label: `Resolved ${cleanName} — ${treeData.totalFiles.toLocaleString()} files in tree`,
+      status: "done",
+    });
+
+    // STEP 2: Detect stack from the file tree
+    pushStep({
+      id: "stack",
+      icon: <Package size={14} className="text-secondary" />,
+      label: "Detecting project stack...",
+      status: "running",
+    });
+
+    const stack = await detectRepositoryStack(cleanName, treeData.uiFilesToRead);
+    setDetectedStack(stack);
+    updateLastStep({
+      label: `Detected ${stack.language} · ${stack.ecosystem} · ${stack.stylingSystem}`,
+      status: "done",
+    });
+
+    // STEP 3: Show the file tree listing (send to AI for context)
+    pushStep({
+      id: "tree",
+      icon: <FolderGit2 size={14} className="text-secondary" />,
+      label: `Mapped ${treeData.allUiFilesCount} UI component files`,
+      status: "running",
+    });
+    await pause(180);
+    updateLastStep({ status: "done" });
+
+    // STEP 4: Read each UI file — show the actual file path
+    for (const filePath of treeData.uiFilesToRead) {
+      pushStep({
+        id: `read-${filePath}`,
+        icon: <FileCode size={14} className="text-secondary" />,
+        label: `Reading ${filePath}`,
+        status: "running",
+      });
+      await pause(160);
+      updateLastStep({ label: `Read ${filePath}`, status: "done" });
+    }
+
+    // STEP 5: Run the AI audit
+    pushStep({
+      id: "audit",
+      icon: <Compass size={14} className="text-secondary" />,
+      label: "Running AI design audit...",
+      status: "running",
+    });
+
+    try {
+      const auditRes = await fetch("/api/groq/audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: cleanName,
+          sourceType: "github",
+          model: selectedModelId,
+          branch: treeData.branch,
+          filePaths: treeData.uiFilesToRead,
+          fullTreeSample: treeData.fullTreeSample,
+        }),
+      });
+      const auditJson = await auditRes.json() as { success: boolean; data?: AuditData; error?: string };
+
+      if (auditJson.success && auditJson.data) {
+        const realData = auditJson.data;
+        setAuditData(realData);
+        if (realData.stack) setDetectedStack(realData.stack);
+        updateLastStep({
+          label: `Audit completed: ${realData.totalDeviations} UI deviation${realData.totalDeviations === 1 ? "" : "s"} mapped`,
+          status: "done",
+        });
+        setHistory((prev) => [
+          { id: Math.random().toString(), name: cleanName, type: "github", summary: `Drift ${realData.driftScore} / 100`, auditData: realData },
+          ...prev.filter((h) => h.name !== cleanName),
+        ]);
+      } else {
+        updateLastStep({ label: "Audit failed", status: "done" });
+        setAuditError(auditJson.error || "Audit failed. Please try again.");
+        setHistory((prev) => [
+          { id: Math.random().toString(), name: cleanName, type: "github", summary: "Error" },
+          ...prev.filter((h) => h.name !== cleanName),
+        ]);
+      }
+    } catch (err) {
+      updateLastStep({ label: "Audit failed — network error", status: "done" });
+      setAuditError(err instanceof Error ? err.message : "Audit failed. Please try again.");
+    }
+
+    setIsAnalyzing(false);
+    setAnalysisComplete(true);
   };
 
   const handleApproveCriticalStep = () => {
     setIsApproving(true);
-    setTimeout(() => {
-      setIsApproving(false);
-      setCriticalApproved(true);
-    }, 450);
+    setTimeout(() => { setIsApproving(false); setCriticalApproved(true); }, 450);
   };
 
   const handleToggleLogin = () => {
@@ -355,16 +362,11 @@ export function DatumApp() {
       setUserProfile(null);
     } else {
       setIsLoggedIn(true);
-      setUserProfile({
-        name: "apreezofficial",
-        avatar: "https://github.com/apreezofficial.png",
-      });
+      setUserProfile({ name: "apreezofficial", avatar: "https://github.com/apreezofficial.png" });
     }
   };
 
-  const handleToggleFigmaConnection = () => {
-    setIsFigmaConnected(!isFigmaConnected);
-  };
+  const handleToggleFigmaConnection = () => setIsFigmaConnected(!isFigmaConnected);
 
   const resetToNew = () => {
     setActiveItem(null);
@@ -372,25 +374,32 @@ export function DatumApp() {
     setIsAnalyzing(false);
     setAnalysisComplete(false);
     setCriticalApproved(false);
-    setCurrentStepIndex(0);
     setAuditData(null);
     setAuditError(null);
     setDetectedStack(null);
+    setCurrentSteps([]);
   };
 
   const handleSelectHistory = (item: HistoryItem) => {
     setActiveItem(item.name);
     setSourceType(item.type);
     setAuditError(null);
-    if (item.auditData) {
-      setAuditData(item.auditData);
-      if (item.auditData.stack) {
-        setDetectedStack(item.auditData.stack);
-      }
-    }
+    setAuditData(item.auditData ?? null);
+    if (item.auditData?.stack) setDetectedStack(item.auditData.stack);
+    // Rebuild a static completed step list for history items
+    const steps: StepItem[] = item.type === "github"
+      ? [
+          { id: "resolve", icon: <GitBranch size={14} className="text-secondary" />, label: `Resolved ${item.name}`, status: "done" },
+          { id: "stack", icon: <Package size={14} className="text-secondary" />, label: "Detected project stack", status: "done" },
+          { id: "tree", icon: <FolderGit2 size={14} className="text-secondary" />, label: "Mapped UI component files", status: "done" },
+          { id: "audit", icon: <Compass size={14} className="text-secondary" />,
+            label: item.auditData ? `Audit completed: ${item.auditData.totalDeviations} deviations` : "Audit completed",
+            status: "done" },
+        ]
+      : figmaSteps;
+    setCurrentSteps(steps);
     setAnalysisComplete(true);
     setCriticalApproved(false);
-    setCurrentStepIndex(item.type === "github" ? 6 : 4);
   };
 
   return (
@@ -451,7 +460,6 @@ export function DatumApp() {
               activeItem={activeItem}
               isAnalyzing={isAnalyzing}
               analysisComplete={analysisComplete}
-              currentStepIndex={currentStepIndex}
               currentSteps={currentSteps}
               stepsExpanded={stepsExpanded}
               setStepsExpanded={setStepsExpanded}

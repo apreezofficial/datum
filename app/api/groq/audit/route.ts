@@ -7,6 +7,9 @@ export async function POST(req: Request) {
       url?: string;
       sourceType?: "github" | "figma";
       model?: string;
+      branch?: string;
+      filePaths?: string[];
+      fullTreeSample?: string[];
       sampleFiles?: Array<{ path: string; content: string }>;
     } = {};
 
@@ -17,7 +20,13 @@ export async function POST(req: Request) {
     }
 
     const targetUrl = body.url || "shadcn/ui";
-    const result = await auditCodebaseWithGroq(targetUrl, body.sampleFiles, body.model);
+    const result = await auditCodebaseWithGroq(targetUrl, {
+      sampleFiles: body.sampleFiles,
+      model: body.model,
+      branch: body.branch,
+      filePaths: body.filePaths,
+      fullTreeSample: body.fullTreeSample,
+    });
 
     return NextResponse.json({
       success: true,
@@ -26,10 +35,7 @@ export async function POST(req: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown audit error";
     return NextResponse.json(
-      {
-        success: false,
-        error: message,
-      },
+      { success: false, error: message },
       { status: 500 }
     );
   }
