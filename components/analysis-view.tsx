@@ -1,0 +1,496 @@
+"use client";
+
+import * as React from "react";
+import {
+  Check,
+  Loader2,
+  ChevronDown,
+  ChevronRight,
+  ShieldAlert,
+  ShieldCheck,
+  CheckCircle2,
+  GitPullRequest,
+  ExternalLink,
+  RefreshCw,
+  Github,
+  Figma,
+} from "lucide-react";
+import type { StepItem, AuditData, ModelOption } from "@/types/datum";
+
+interface AnalysisViewProps {
+  sourceType: "github" | "figma";
+  activeItem: string;
+  isAnalyzing: boolean;
+  analysisComplete: boolean;
+  currentStepIndex: number;
+  currentSteps: StepItem[];
+  stepsExpanded: boolean;
+  setStepsExpanded: (expanded: boolean | ((prev: boolean) => boolean)) => void;
+  activeModel: ModelOption;
+  auditData: AuditData | null;
+  criticalApproved: boolean;
+  isApproving: boolean;
+  isLoggedIn: boolean;
+  userProfile: { name: string; avatar: string } | null;
+  isFigmaConnected: boolean;
+  handleToggleLogin: () => void;
+  handleToggleFigmaConnection: () => void;
+  handleApproveCriticalStep: () => void;
+  resetToNew: () => void;
+}
+
+export function AnalysisView({
+  sourceType,
+  activeItem,
+  isAnalyzing,
+  analysisComplete,
+  currentStepIndex,
+  currentSteps,
+  stepsExpanded,
+  setStepsExpanded,
+  activeModel,
+  auditData,
+  criticalApproved,
+  isApproving,
+  isLoggedIn,
+  userProfile,
+  isFigmaConnected,
+  handleToggleLogin,
+  handleToggleFigmaConnection,
+  handleApproveCriticalStep,
+  resetToNew,
+}: AnalysisViewProps) {
+  return (
+    <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 sm:py-10 space-y-6 sm:space-y-8">
+      {/* Expandable Steps Section */}
+      <div className="space-y-3">
+        <button
+          type="button"
+          onClick={() => setStepsExpanded((prev) => !prev)}
+          className="flex items-center gap-2 text-xs font-mono text-secondary hover:text-text focus:outline-none"
+        >
+          {stepsExpanded ? (
+            <ChevronDown size={14} className="text-muted" />
+          ) : (
+            <ChevronRight size={14} className="text-muted" />
+          )}
+          <span>
+            {isAnalyzing
+              ? `Step ${Math.min(currentStepIndex + 1, currentSteps.length)} of ${currentSteps.length} in progress...`
+              : `${currentSteps.length} steps completed`}
+          </span>
+          {analysisComplete && (
+            <span className="text-emerald-600 dark:text-emerald-400 font-mono ml-2">
+              ✓ Done
+            </span>
+          )}
+        </button>
+
+        {/* Steps List */}
+        {stepsExpanded && (
+          <div className="pl-5 space-y-2 pt-1">
+            {currentSteps.map((s) => (
+              <div
+                key={s.id}
+                className={`flex items-center gap-2.5 text-xs transition-opacity ${
+                  s.status === "pending"
+                    ? "opacity-30"
+                    : s.status === "running"
+                    ? "opacity-100 font-medium text-tide"
+                    : "opacity-85 text-text"
+                }`}
+              >
+                <div className="shrink-0 flex items-center justify-center w-4">
+                  {s.status === "done" ? (
+                    <Check size={13} className="text-emerald-500" strokeWidth={2.2} />
+                  ) : s.status === "running" ? (
+                    <Loader2 size={13} className="animate-spin text-tide" />
+                  ) : (
+                    s.icon
+                  )}
+                </div>
+                <span className="font-mono text-xs">{s.label}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Specific Results & Critical Step (Distinct for GitHub vs Figma) */}
+      {analysisComplete && (
+        <div className="space-y-6 pt-4 border-t border-border-subtle">
+          {/* GITHUB FLOW RESULTS */}
+          {sourceType === "github" ? (
+            <div className="space-y-6">
+              {/* GitHub Report Card */}
+              <div className="border border-border rounded-lg bg-surface p-5 space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-border-subtle">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-sm font-bold text-text">
+                        Codebase Survey · {activeItem}
+                      </h2>
+                      <span className="text-[10px] font-mono bg-tide/10 text-tide px-2 py-0.5 rounded-full">
+                        {activeModel.name}
+                      </span>
+                    </div>
+                    <p className="text-xs text-secondary mt-0.5">
+                      {auditData?.summary || "38 deviations detected across 14 UI files."}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-muted font-mono block">DRIFT SCORE</span>
+                    <span
+                      className={`text-lg font-bold font-mono ${
+                        (auditData?.driftScore ?? 48) >= 60
+                          ? "text-peak"
+                          : (auditData?.driftScore ?? 48) >= 30
+                          ? "text-ochre"
+                          : "text-emerald-500"
+                      }`}
+                    >
+                      {auditData?.driftScore ?? 48} / 100
+                    </span>
+                  </div>
+                </div>
+
+                {/* Mismatches List */}
+                <div className="space-y-2 text-xs font-mono">
+                  {(auditData?.deviations && auditData.deviations.length > 0
+                    ? auditData.deviations
+                    : [
+                        {
+                          file: "components/Card.tsx",
+                          line: 42,
+                          currentValue: "p-[13px]",
+                          suggestedToken: "p-3",
+                          suggestedValue: "12px",
+                          delta: "+1px",
+                          confidence: 92,
+                        },
+                        {
+                          file: "app/header.tsx",
+                          line: 18,
+                          currentValue: "#3b82f7",
+                          suggestedToken: "var(--brand-500)",
+                          suggestedValue: "#3b82f6",
+                          delta: "1.4 dE",
+                          confidence: 95,
+                        },
+                      ]
+                  ).map((dev, idx) => (
+                    <div
+                      key={idx}
+                      className="p-2.5 border border-border-subtle rounded bg-raised/40 flex items-center justify-between gap-3"
+                    >
+                      <div className="truncate">
+                        <div className="text-[10px] text-muted">
+                          {dev.file}:{dev.line}
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5 truncate">
+                          <span className="text-peak line-through truncate">{dev.currentValue}</span>
+                          <span>→</span>
+                          <span className="text-tide font-medium truncate">
+                            {dev.suggestedToken} ({dev.suggestedValue})
+                          </span>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className="text-[11px] text-secondary block">
+                          Δ {typeof dev.delta === "number" ? `+${dev.delta}` : dev.delta}
+                        </span>
+                        <span className="text-[9px] text-muted font-sans">
+                          {dev.confidence > 1 ? dev.confidence : Math.round(dev.confidence * 100)}% conf
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* GITHUB CRITICAL STEP: OPEN FIX PR */}
+              <div
+                className={`border rounded-lg p-5 transition-all ${
+                  criticalApproved
+                    ? "border-emerald-500/40 bg-emerald-50/20 dark:bg-emerald-950/10"
+                    : "border-ochre/60 bg-ochre/5"
+                }`}
+              >
+                {!criticalApproved ? (
+                  <div className="space-y-3.5">
+                    <div className="flex items-start gap-2.5">
+                      <ShieldAlert size={18} className="text-ochre shrink-0 mt-0.5" />
+                      <div>
+                        <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-ochre">
+                          Critical Action Authorization
+                        </span>
+                        <h3 className="text-sm font-bold text-text mt-0.5">
+                          Allow Datum to Open Fix Pull Request on {activeItem}?
+                        </h3>
+                        <p className="text-xs text-secondary mt-1 leading-relaxed">
+                          This will push branch <code className="font-mono text-text">datum/fix-design-drift</code> with 38 token fixes and open a PR on GitHub.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-border-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      {!isLoggedIn ? (
+                        <div className="flex items-center justify-between w-full">
+                          <span className="text-xs text-secondary">
+                            Sign in to authorize PR creation.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleToggleLogin}
+                            className="flex items-center gap-1.5 rounded-md bg-accent text-accent-foreground px-3.5 py-1.5 text-xs font-medium hover:opacity-90"
+                          >
+                            <Github size={13} />
+                            <span>Sign in with GitHub</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <span className="text-xs text-secondary">
+                            Signed in as <b className="text-text">{userProfile?.name}</b>
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => alert("Action skipped.")}
+                              className="px-3 py-1.5 text-xs text-secondary hover:text-text rounded border border-border bg-surface"
+                            >
+                              Decline
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isApproving}
+                              onClick={handleApproveCriticalStep}
+                              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded bg-accent text-accent-foreground hover:opacity-90"
+                            >
+                              {isApproving ? (
+                                <>
+                                  <Loader2 size={13} className="animate-spin" />
+                                  <span>Opening PR...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <ShieldCheck size={14} />
+                                  <span>Allow & Open Fix PR</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3 text-xs">
+                    <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-medium">
+                      <CheckCircle2 size={18} />
+                      <span>Critical Step Authorized · Fix PR #1 Opened</span>
+                    </div>
+                    <p className="text-secondary text-xs pl-6 leading-relaxed">
+                      PR #1: &ldquo;fix: align {auditData?.totalDeviations || 38} tokens with design system benchmarks&rdquo; was opened on <code className="font-mono text-text">{activeItem}</code>.
+                    </p>
+                    <div className="pl-6 pt-1 flex flex-wrap items-center gap-3">
+                      <a
+                        href={
+                          activeItem?.includes("/")
+                            ? `https://github.com/${activeItem}/pull/1`
+                            : "https://github.com/apreezofficial/datum/pull/1"
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 font-mono text-xs text-tide hover:underline"
+                      >
+                        <GitPullRequest size={13} />
+                        <span>
+                          github.com/
+                          {activeItem?.includes("/") ? `${activeItem}/pull/1` : "apreezofficial/datum/pull/1"}
+                        </span>
+                        <ExternalLink size={11} />
+                      </a>
+                      <span className="text-muted">·</span>
+                      <span className="font-mono text-[11px] text-muted">
+                        Branch: datum/fix-design-drift
+                      </span>
+                      <span className="text-muted">·</span>
+                      <button
+                        type="button"
+                        onClick={resetToNew}
+                        className="inline-flex items-center gap-1 text-secondary hover:text-text font-mono text-xs"
+                      >
+                        <RefreshCw size={12} />
+                        <span>Audit another codebase</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            /* ================= FIGMA FLOW RESULTS ================= */
+            <div className="space-y-6">
+              {/* Figma Report Card */}
+              <div className="border border-border rounded-lg bg-surface p-5 space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-border-subtle">
+                  <div>
+                    <h2 className="text-sm font-bold text-text">
+                      Figma Token Sync Report · {activeItem}
+                    </h2>
+                    <p className="text-xs text-secondary mt-0.5">
+                      12 token discrepancies between Figma file and repository tokens.
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-muted font-mono block">STATUS</span>
+                    <span className="text-xs font-bold font-mono text-ochre">OUT OF SYNC</span>
+                  </div>
+                </div>
+
+                {/* Figma Mismatch Breakdown */}
+                <div className="space-y-2 text-xs font-mono">
+                  <div className="p-2.5 border border-border-subtle rounded bg-raised/40 flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] text-muted">Variable: Color/Brand/500</div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-tide">Figma: #3B82F6</span>
+                        <span>vs</span>
+                        <span className="text-peak">Code: #3B82F7</span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-ochre">Value Differs</span>
+                  </div>
+
+                  <div className="p-2.5 border border-border-subtle rounded bg-raised/40 flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] text-muted">Variable: Spacing/card-padding</div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-tide">Figma: 16px</span>
+                        <span>vs</span>
+                        <span className="text-peak">Code: 13px</span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-ochre">Value Differs</span>
+                  </div>
+
+                  <div className="p-2.5 border border-border-subtle rounded bg-raised/40 flex items-center justify-between">
+                    <div>
+                      <div className="text-[10px] text-muted">Variable: Radius/button</div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-tide">Figma: 6px (rounded-md)</span>
+                        <span>vs</span>
+                        <span className="text-muted">Code: Missing</span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] text-secondary">Missing in Code</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* FIGMA CRITICAL STEP: SYNC TOKENS TO CODE */}
+              <div
+                className={`border rounded-lg p-5 transition-all ${
+                  criticalApproved
+                    ? "border-emerald-500/40 bg-emerald-50/20 dark:bg-emerald-950/10"
+                    : "border-ochre/60 bg-ochre/5"
+                }`}
+              >
+                {!criticalApproved ? (
+                  <div className="space-y-3.5">
+                    <div className="flex items-start gap-2.5">
+                      <ShieldAlert size={18} className="text-ochre shrink-0 mt-0.5" />
+                      <div>
+                        <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-ochre">
+                          Critical Token Sync Authorization
+                        </span>
+                        <h3 className="text-sm font-bold text-text mt-0.5">
+                          Allow Datum to Sync 12 Figma Tokens into Codebase?
+                        </h3>
+                        <p className="text-xs text-secondary mt-1 leading-relaxed">
+                          This will write updated canonical design tokens directly into your repository&apos;s <code className="font-mono text-text">styles/tokens.ts</code> and update the design system benchmark table.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-border-subtle flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      {!isFigmaConnected ? (
+                        <div className="flex items-center justify-between w-full">
+                          <span className="text-xs text-secondary">
+                            Connect Figma to authorize syncing design tokens to your repository.
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleToggleFigmaConnection}
+                            className="flex items-center gap-1.5 rounded-md bg-accent text-accent-foreground px-3.5 py-1.5 text-xs font-medium hover:opacity-90"
+                          >
+                            <Figma size={13} />
+                            <span>Connect Figma Account</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <span className="text-xs text-secondary">
+                            Authorized via <b className="text-text">Figma Token Connection</b>
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => alert("Sync cancelled.")}
+                              className="px-3 py-1.5 text-xs text-secondary hover:text-text rounded border border-border bg-surface"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isApproving}
+                              onClick={handleApproveCriticalStep}
+                              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium rounded bg-accent text-accent-foreground hover:opacity-90"
+                            >
+                              {isApproving ? (
+                                <>
+                                  <Loader2 size={13} className="animate-spin" />
+                                  <span>Writing Tokens...</span>
+                                </>
+                              ) : (
+                                <>
+                                  <ShieldCheck size={14} />
+                                  <span>Allow & Sync Tokens to Code</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-medium">
+                      <CheckCircle2 size={18} />
+                      <span>Figma Tokens Synced to Codebase</span>
+                    </div>
+                    <p className="text-secondary text-xs pl-6">
+                      12 canonical tokens successfully updated in <code className="font-mono text-text">styles/tokens.ts</code>. Code benchmarks are now in 100% parity with Figma.
+                    </p>
+                    <div className="pl-6 pt-1 flex items-center gap-3 font-mono text-xs">
+                      <button
+                        type="button"
+                        onClick={resetToNew}
+                        className="inline-flex items-center gap-1 text-secondary hover:text-text"
+                      >
+                        <RefreshCw size={12} />
+                        <span>Start another audit</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

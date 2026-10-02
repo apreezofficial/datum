@@ -25,8 +25,7 @@
         "app/styleguide/**",
         "app/page.tsx",
         "app/(marketing)/**",
-        "components/datum-app.tsx",
-        "components/header-plane-animation.tsx",
+        "components/**",
         "lib/groq.ts"
       ],
       "rules": {
