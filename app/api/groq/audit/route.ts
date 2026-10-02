@@ -6,6 +6,7 @@ export async function POST(req: Request) {
     let body: {
       url?: string;
       sourceType?: "github" | "figma";
+      model?: string;
       sampleFiles?: Array<{ path: string; content: string }>;
     } = {};
 
@@ -16,7 +17,7 @@ export async function POST(req: Request) {
     }
 
     const targetUrl = body.url || "shadcn/ui";
-    const result = await auditCodebaseWithGroq(targetUrl, body.sampleFiles);
+    const result = await auditCodebaseWithGroq(targetUrl, body.sampleFiles, body.model);
 
     return NextResponse.json({
       success: true,

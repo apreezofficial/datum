@@ -34,6 +34,7 @@ import {
   Check,
   Palette,
   Plane,
+  Cpu,
 } from "lucide-react";
 
 interface StepItem {
@@ -61,6 +62,42 @@ interface AuditData {
   deviations: AuditDeviation[];
 }
 
+export interface ModelOption {
+  id: string;
+  name: string;
+  tier: string;
+  description: string;
+  isDefault?: boolean;
+}
+
+const DEFAULT_MODELS: ModelOption[] = [
+  {
+    id: "openai/gpt-oss-120b",
+    name: "GPT-OSS 120B",
+    tier: "Deep Reasoning",
+    description: "Deep reasoning for complex ASTs & token trees",
+    isDefault: true,
+  },
+  {
+    id: "openai/gpt-oss-20b",
+    name: "GPT-OSS 20B",
+    tier: "Instant",
+    description: "Ultra-low latency for instant design token checks",
+  },
+  {
+    id: "qwen/qwen3.8-27b",
+    name: "Qwen 3.8 27B",
+    tier: "Balanced",
+    description: "High token throughput & multilingual code support",
+  },
+  {
+    id: "allam-2-7b",
+    name: "Allam 2 7B",
+    tier: "Lightweight",
+    description: "Lightweight inference for quick single-file checks",
+  },
+];
+
 export function DatumApp() {
   const { theme, toggleTheme } = useTheme();
 
@@ -71,6 +108,37 @@ export function DatumApp() {
   const [isFigmaConnected, setIsFigmaConnected] = React.useState(false);
   const [autopilot, setAutopilot] = React.useState(false);
   const [auditData, setAuditData] = React.useState<AuditData | null>(null);
+
+  // Model selection state
+  const [models, setModels] = React.useState<ModelOption[]>(DEFAULT_MODELS);
+  const [selectedModelId, setSelectedModelId] = React.useState("openai/gpt-oss-120b");
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = React.useState(false);
+  const modelDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  // Fetch available models from backend
+  React.useEffect(() => {
+    fetch("/api/models")
+      .then((r) => r.json())
+      .then((payload) => {
+        if (payload?.success && Array.isArray(payload.data) && payload.data.length > 0) {
+          setModels(payload.data);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Close model dropdown on outside click
+  React.useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) {
+        setIsModelDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const activeModel = models.find((m) => m.id === selectedModelId) || models[0];
 
   // Auto-close sidebar on small screens
   React.useEffect(() => {
@@ -189,11 +257,15 @@ export function DatumApp() {
     setCurrentStepIndex(0);
     setAuditData(null);
 
-    // Trigger Groq AI backend audit
+    // Trigger AI backend audit
     fetch("/api/groq/audit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url: cleanName, sourceType: isFigma ? "figma" : "github" }),
+      body: JSON.stringify({
+        url: cleanName,
+        sourceType: isFigma ? "figma" : "github",
+        model: selectedModelId,
+      }),
     })
       .then((r) => r.json())
       .then((res) => {
@@ -202,7 +274,7 @@ export function DatumApp() {
         }
       })
       .catch((err) => {
-        console.warn("Groq audit fetch failed:", err);
+        console.warn("Audit fetch failed:", err);
       });
 
     const totalSteps = isFigma ? 4 : 6;
@@ -447,6 +519,56 @@ export function DatumApp() {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Model Selector Dropdown (Clean, user-facing, no provider branding) */}
+            <div className="relative" ref={modelDropdownRef}>
+              <button
+                type="button"
+                onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                className="flex items-center gap-1.5 rounded-full border border-border bg-surface hover:bg-raised px-2.5 sm:px-3 py-1.5 text-xs text-text transition-colors shadow-xs"
+                title="Select evaluation model"
+              >
+                <Cpu size={13} className="text-secondary shrink-0" />
+                <span className="font-medium hidden xs:inline">{activeModel.name}</span>
+                <span className="font-medium xs:hidden">{activeModel.name.replace(/^[^-]+-/, "")}</span>
+                <ChevronDown size={11} className="text-muted shrink-0" />
+              </button>
+
+              {isModelDropdownOpen && (
+                <div className="absolute right-0 mt-1.5 w-64 rounded-xl border border-border bg-surface p-1.5 shadow-xl z-50 select-none">
+                  <div className="px-2.5 py-1 text-[10px] font-mono text-muted uppercase tracking-wider">
+                    Model
+                  </div>
+                  <div className="space-y-0.5">
+                    {models.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedModelId(m.id);
+                          setIsModelDropdownOpen(false);
+                        }}
+                        className={`flex flex-col w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+                          selectedModelId === m.id
+                            ? "bg-raised font-medium text-text"
+                            : "text-secondary hover:bg-raised/60 hover:text-text"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className="font-semibold text-text">{m.name}</span>
+                          <span className="text-[10px] font-mono text-tide bg-tide/10 px-1.5 py-0.5 rounded">
+                            {m.tier}
+                          </span>
+                        </div>
+                        <span className="text-[11px] text-muted leading-tight mt-0.5">
+                          {m.description}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Auto-Pilot Toggle Button & Supersonic Plane Animation beside it */}
             <div className="flex items-center gap-2">
               <button
@@ -721,7 +843,7 @@ export function DatumApp() {
                                 Codebase Survey · {activeItem}
                               </h2>
                               <span className="text-[10px] font-mono bg-tide/10 text-tide px-2 py-0.5 rounded-full">
-                                Groq AI
+                                {activeModel.name}
                               </span>
                             </div>
                             <p className="text-xs text-secondary mt-0.5">
