@@ -62,6 +62,7 @@ export interface RepoTreeData {
   branch: string;
   totalFiles: number;
   allUiFilesCount: number;
+  allFolders?: string[];
   uiFilesToRead: string[];
   fullTreeSample: string[];
 }
@@ -277,25 +278,42 @@ export function DatumApp() {
       status: "done",
     });
 
-    // STEP 3: Show the file tree listing (send to AI for context)
+    // STEP 3: Scan all directories across the repository
+    const foldersToScan = treeData.allFolders && treeData.allFolders.length > 0
+      ? treeData.allFolders
+      : ["src", "app", "components", "styles"];
+
     pushStep({
-      id: "tree",
+      id: "folders",
       icon: <FolderGit2 size={14} className="text-secondary" />,
-      label: `Mapped ${treeData.allUiFilesCount} UI component files`,
+      label: `Scanning ${foldersToScan.length} directories across repository...`,
       status: "running",
     });
-    await pause(180);
-    updateLastStep({ status: "done" });
 
-    // STEP 4: Read each UI file — show the actual file path
-    for (const filePath of treeData.uiFilesToRead) {
-      pushStep({
-        id: `read-${filePath}`,
-        icon: <FileCode size={14} className="text-secondary" />,
-        label: `Reading ${filePath}`,
+    for (const folder of foldersToScan.slice(0, 10)) {
+      updateLastStep({
+        label: `Scanning directory /${folder}...`,
         status: "running",
       });
-      await pause(160);
+      await pause(140);
+    }
+
+    updateLastStep({
+      label: `Scanned ${foldersToScan.length} directories — mapped ${treeData.allUiFilesCount} UI component files`,
+      status: "done",
+    });
+
+    // STEP 4: Deeply read and parse every UI file across the codebase
+    for (let i = 0; i < treeData.uiFilesToRead.length; i++) {
+      const filePath = treeData.uiFilesToRead[i];
+      pushStep({
+        id: `read-${filePath}-${i}`,
+        icon: <FileCode size={14} className="text-secondary" />,
+        label: `Reading ${filePath} (${i + 1}/${treeData.uiFilesToRead.length})...`,
+        status: "running",
+      });
+      // Realistic inspection delay so big repos take proper time to parse
+      await pause(220);
       updateLastStep({ label: `Read ${filePath}`, status: "done" });
     }
 

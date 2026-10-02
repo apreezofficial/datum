@@ -73,6 +73,21 @@ export async function GET(req: Request) {
         );
       });
 
+      // Extract all unique folder directories in the repository
+      const allFolders = Array.from(
+        new Set(
+          allFiles
+            .map((p) => {
+              const lastSlash = p.lastIndexOf("/");
+              return lastSlash > -1 ? p.substring(0, lastSlash) : "root";
+            })
+            .filter(Boolean)
+        )
+      );
+
+      // Return ALL UI files for full codebase scanning (up to 35 for thorough deep scan)
+      const uiFilesToRead = uiFiles.length > 0 ? uiFiles.slice(0, 35) : allFiles.filter((p) => p.endsWith(".html") || p.endsWith(".css")).slice(0, 35);
+
       return NextResponse.json({
         success: true,
         data: {
@@ -81,10 +96,9 @@ export async function GET(req: Request) {
           branch,
           totalFiles: allFiles.length,
           allUiFilesCount: uiFiles.length,
-          // Top 6 UI files to deeply read and audit
-          uiFilesToRead: uiFiles.slice(0, 6),
-          // Full tree listing (paths only) — sent to AI as context
-          fullTreeSample: allFiles.slice(0, 120),
+          allFolders,
+          uiFilesToRead,
+          fullTreeSample: allFiles.slice(0, 200),
         },
       });
     } catch {
