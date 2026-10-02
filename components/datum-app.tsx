@@ -43,6 +43,24 @@ interface StepItem {
   status: "pending" | "running" | "done";
 }
 
+interface AuditDeviation {
+  file: string;
+  line: number;
+  currentValue: string;
+  suggestedToken: string;
+  suggestedValue: string;
+  delta: string | number;
+  confidence: number;
+}
+
+interface AuditData {
+  driftScore: number;
+  totalFilesScanned: number;
+  totalDeviations: number;
+  summary: string;
+  deviations: AuditDeviation[];
+}
+
 export function DatumApp() {
   const { theme, toggleTheme } = useTheme();
 
@@ -52,6 +70,7 @@ export function DatumApp() {
   const [userProfile, setUserProfile] = React.useState<{ name: string; avatar: string } | null>(null);
   const [isFigmaConnected, setIsFigmaConnected] = React.useState(false);
   const [autopilot, setAutopilot] = React.useState(false);
+  const [auditData, setAuditData] = React.useState<AuditData | null>(null);
 
   // Auto-close sidebar on small screens
   React.useEffect(() => {
@@ -168,15 +187,23 @@ export function DatumApp() {
     setAnalysisComplete(false);
     setCriticalApproved(false);
     setCurrentStepIndex(0);
+    setAuditData(null);
 
     // Trigger Groq AI backend audit
     fetch("/api/groq/audit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: cleanName, sourceType: isFigma ? "figma" : "github" }),
-    }).catch(() => {
-      // Daemon / background execution handles graceful fallback
-    });
+    })
+      .then((r) => r.json())
+      .then((res) => {
+        if (res?.success && res?.data) {
+          setAuditData(res.data);
+        }
+      })
+      .catch((err) => {
+        console.warn("Groq audit fetch failed:", err);
+      });
 
     const totalSteps = isFigma ? 4 : 6;
     let step = 0;
@@ -233,6 +260,7 @@ export function DatumApp() {
     setAnalysisComplete(false);
     setCriticalApproved(false);
     setCurrentStepIndex(0);
+    setAuditData(null);
   };
 
   return (
@@ -707,44 +735,85 @@ export function DatumApp() {
                       <div className="border border-border rounded-lg bg-surface p-5 space-y-4">
                         <div className="flex items-center justify-between pb-3 border-b border-border-subtle">
                           <div>
-                            <h2 className="text-sm font-bold text-text">
-                              Codebase Survey · {activeItem}
-                            </h2>
+                            <div className="flex items-center gap-2">
+                              <h2 className="text-sm font-bold text-text">
+                                Codebase Survey · {activeItem}
+                              </h2>
+                              <span className="text-[10px] font-mono bg-tide/10 text-tide px-2 py-0.5 rounded-full">
+                                Groq AI
+                              </span>
+                            </div>
                             <p className="text-xs text-secondary mt-0.5">
-                              38 deviations detected across 14 UI files.
+                              {auditData?.summary || "38 deviations detected across 14 UI files."}
                             </p>
                           </div>
                           <div className="text-right">
                             <span className="text-[10px] text-muted font-mono block">DRIFT SCORE</span>
-                            <span className="text-lg font-bold font-mono text-ochre">48 / 100</span>
+                            <span
+                              className={`text-lg font-bold font-mono ${
+                                (auditData?.driftScore ?? 48) >= 60
+                                  ? "text-peak"
+                                  : (auditData?.driftScore ?? 48) >= 30
+                                  ? "text-ochre"
+                                  : "text-emerald-500"
+                              }`}
+                            >
+                              {auditData?.driftScore ?? 48} / 100
+                            </span>
                           </div>
                         </div>
 
                         {/* Mismatches List */}
                         <div className="space-y-2 text-xs font-mono">
-                          <div className="p-2.5 border border-border-subtle rounded bg-raised/40 flex items-center justify-between">
-                            <div>
-                              <div className="text-[10px] text-muted">components/Card.tsx:42</div>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <span className="text-peak line-through">p-[13px]</span>
-                                <span>→</span>
-                                <span className="text-tide font-medium">p-3 (12px)</span>
+                          {(auditData?.deviations && auditData.deviations.length > 0
+                            ? auditData.deviations
+                            : [
+                                {
+                                  file: "components/Card.tsx",
+                                  line: 42,
+                                  currentValue: "p-[13px]",
+                                  suggestedToken: "p-3",
+                                  suggestedValue: "12px",
+                                  delta: "+1px",
+                                  confidence: 92,
+                                },
+                                {
+                                  file: "app/header.tsx",
+                                  line: 18,
+                                  currentValue: "#3b82f7",
+                                  suggestedToken: "var(--brand-500)",
+                                  suggestedValue: "#3b82f6",
+                                  delta: "1.4 dE",
+                                  confidence: 95,
+                                },
+                              ]
+                          ).map((dev, idx) => (
+                            <div
+                              key={idx}
+                              className="p-2.5 border border-border-subtle rounded bg-raised/40 flex items-center justify-between gap-3"
+                            >
+                              <div className="truncate">
+                                <div className="text-[10px] text-muted">
+                                  {dev.file}:{dev.line}
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5 truncate">
+                                  <span className="text-peak line-through truncate">{dev.currentValue}</span>
+                                  <span>→</span>
+                                  <span className="text-tide font-medium truncate">
+                                    {dev.suggestedToken} ({dev.suggestedValue})
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <span className="text-[11px] text-secondary block">
+                                  Δ {typeof dev.delta === "number" ? `+${dev.delta}` : dev.delta}
+                                </span>
+                                <span className="text-[9px] text-muted font-sans">
+                                  {dev.confidence > 1 ? dev.confidence : Math.round(dev.confidence * 100)}% conf
+                                </span>
                               </div>
                             </div>
-                            <span className="text-[11px] text-secondary">Δ +1px</span>
-                          </div>
-
-                          <div className="p-2.5 border border-border-subtle rounded bg-raised/40 flex items-center justify-between">
-                            <div>
-                              <div className="text-[10px] text-muted">app/header.tsx:18</div>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <span className="text-peak line-through">#3b82f7</span>
-                                <span>→</span>
-                                <span className="text-tide font-medium">var(--brand-500)</span>
-                              </div>
-                            </div>
-                            <span className="text-[11px] text-secondary">Δ 1.4 dE</span>
-                          </div>
+                          ))}
                         </div>
                       </div>
 
