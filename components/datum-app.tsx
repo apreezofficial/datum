@@ -185,9 +185,10 @@ export function DatumApp() {
     {
       id: "audit",
       icon: <Compass size={14} className="text-secondary" />,
-      label: auditData?.totalDeviations !== undefined
-        ? `Audit completed: ${auditData.totalDeviations} UI deviations mapped`
-        : "Audit completed: UI deviations mapped",
+      label:
+        auditData?.totalDeviations !== undefined
+          ? `Audit completed: ${auditData.totalDeviations} UI deviations mapped`
+          : "Audit completed: mapping UI deviations...",
       status: currentStepIndex > 5 ? "done" : currentStepIndex === 5 && isAnalyzing ? "running" : "pending",
     },
   ];
@@ -244,13 +245,15 @@ export function DatumApp() {
     setCurrentStepIndex(0);
     setAuditData(null);
 
+    // Fast stack detection
     if (!isFigma) {
       detectRepositoryStack(cleanName).then((stk) => {
         setDetectedStack(stk);
       });
     }
 
-    fetch("/api/groq/audit", {
+    // Launch AI backend audit
+    const auditPromise = fetch("/api/groq/audit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -262,37 +265,60 @@ export function DatumApp() {
       .then((r) => r.json())
       .then((res) => {
         if (res?.success && res?.data) {
-          setAuditData(res.data);
-          if (res.data.stack) {
-            setDetectedStack(res.data.stack);
-          }
+          return res.data as AuditData;
         }
+        return null;
       })
       .catch((err) => {
         console.warn("Audit fetch failed:", err);
+        return null;
       });
 
-    const totalSteps = isFigma ? 4 : 6;
+    const maxProgressSteps = isFigma ? 3 : 5; // Animate up to the final step
     let step = 0;
     const interval = setInterval(() => {
       step++;
-      setCurrentStepIndex(step);
-      if (step >= totalSteps) {
+      if (step <= maxProgressSteps) {
+        setCurrentStepIndex(step);
+      } else {
         clearInterval(interval);
-        setIsAnalyzing(false);
-        setAnalysisComplete(true);
-
-        setHistory((prev) => [
-          {
-            id: Math.random().toString(),
-            name: cleanName,
-            type: isFigma ? "figma" : "github",
-            summary: isFigma ? "12 token mismatches" : "Drift 48 / 100",
-          },
-          ...prev.filter((item) => item.name !== cleanName),
-        ]);
       }
     }, 280);
+
+    // Wait for the real AI audit to finish before completing the final step and revealing results!
+    auditPromise.then((realData) => {
+      clearInterval(interval);
+      if (realData) {
+        setAuditData(realData);
+        if (realData.stack) {
+          setDetectedStack(realData.stack);
+        }
+      }
+
+      // Advance to 100% completed
+      setCurrentStepIndex(isFigma ? 4 : 6);
+      setIsAnalyzing(false);
+      setAnalysisComplete(true);
+
+      const summaryText = realData
+        ? isFigma
+          ? "12 token mismatches"
+          : `Drift ${realData.driftScore} / 100`
+        : isFigma
+        ? "12 token mismatches"
+        : "Drift 48 / 100";
+
+      setHistory((prev) => [
+        {
+          id: Math.random().toString(),
+          name: cleanName,
+          type: isFigma ? "figma" : "github",
+          summary: summaryText,
+          auditData: realData || undefined,
+        },
+        ...prev.filter((item) => item.name !== cleanName),
+      ]);
+    });
   };
 
   const handleApproveCriticalStep = () => {
@@ -334,6 +360,12 @@ export function DatumApp() {
   const handleSelectHistory = (item: HistoryItem) => {
     setActiveItem(item.name);
     setSourceType(item.type);
+    if (item.auditData) {
+      setAuditData(item.auditData);
+      if (item.auditData.stack) {
+        setDetectedStack(item.auditData.stack);
+      }
+    }
     setAnalysisComplete(true);
     setCriticalApproved(false);
     setCurrentStepIndex(item.type === "github" ? 6 : 4);

@@ -40,6 +40,7 @@ export interface HistoryItem {
   name: string;
   type: "github" | "figma";
   summary: string;
+  auditData?: AuditData;
 }
 
 export interface UserProfile {

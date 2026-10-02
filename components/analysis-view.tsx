@@ -135,21 +135,21 @@ export function AnalysisView({
                       </span>
                     </div>
                     <p className="text-xs text-secondary mt-0.5 line-clamp-2 sm:line-clamp-none">
-                      {auditData?.summary || "38 deviations detected across 14 UI files."}
+                      {auditData?.summary || "Analyzing UI components for design system deviations..."}
                     </p>
                   </div>
                   <div className="text-left xs:text-right shrink-0 flex xs:flex-col items-center xs:items-end justify-between xs:justify-start">
                     <span className="text-[10px] text-muted font-mono block">DRIFT SCORE</span>
                     <span
                       className={`text-lg font-bold font-mono ${
-                        (auditData?.driftScore ?? 48) >= 60
+                        (auditData?.driftScore ?? 0) >= 60
                           ? "text-peak"
-                          : (auditData?.driftScore ?? 48) >= 30
+                          : (auditData?.driftScore ?? 0) >= 30
                           ? "text-ochre"
                           : "text-emerald-500"
                       }`}
                     >
-                      {auditData?.driftScore ?? 48} / 100
+                      {auditData?.driftScore !== undefined ? `${auditData.driftScore} / 100` : "-- / 100"}
                     </span>
                   </div>
                 </div>
@@ -212,7 +212,7 @@ export function AnalysisView({
                           Allow Datum to Open Fix Pull Request on {activeItem}?
                         </h3>
                         <p className="text-xs text-secondary mt-1 leading-relaxed">
-                          This will push branch <code className="font-mono text-text">datum/fix-design-drift</code> with {auditData?.totalDeviations || 38} token fixes and open a PR on GitHub.
+                          This will push branch <code className="font-mono text-text">datum/fix-design-drift</code> with {auditData?.totalDeviations ?? 0} token fixes and open a PR on GitHub.
                         </p>
                       </div>
                     </div>
@@ -275,7 +275,7 @@ export function AnalysisView({
                       <span>Critical Step Authorized · Fix PR #1 Opened</span>
                     </div>
                     <p className="text-secondary text-xs pl-6 leading-relaxed">
-                      PR #1: &ldquo;fix: align {auditData?.totalDeviations || 38} tokens with design system benchmarks&rdquo; was opened on <code className="font-mono text-text">{activeItem}</code>.
+                      PR #1: &ldquo;fix: align {auditData?.totalDeviations ?? 0} tokens with design system benchmarks&rdquo; was opened on <code className="font-mono text-text">{activeItem}</code>.
                     </p>
                     <div className="pl-6 pt-1 flex flex-wrap items-center gap-3">
                       <a
