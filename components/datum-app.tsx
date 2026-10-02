@@ -19,6 +19,7 @@ import { DatumSidebar } from "@/components/datum-sidebar";
 import { DatumFooter } from "@/components/datum-footer";
 import { HeroView } from "@/components/hero-view";
 import { AnalysisView } from "@/components/analysis-view";
+import { VibeWorkspace } from "@/components/vibe-workspace";
 
 import type {
   StepItem,
@@ -79,6 +80,7 @@ export function DatumApp() {
   const [auditData, setAuditData] = React.useState<AuditData | null>(null);
   const [auditError, setAuditError] = React.useState<string | null>(null);
   const [detectedStack, setDetectedStack] = React.useState<StackInfo | null>(null);
+  const [loadedTreeData, setLoadedTreeData] = React.useState<RepoTreeData | null>(null);
 
   // Model selection
   const [models, setModels] = React.useState<ModelOption[]>(DEFAULT_MODELS);
@@ -88,6 +90,7 @@ export function DatumApp() {
   const [sourceType, setSourceType] = React.useState<"github" | "figma">("github");
   const [inputValue, setInputValue] = React.useState("");
   const [activeItem, setActiveItem] = React.useState<string | null>(null);
+  const [workspaceView, setWorkspaceView] = React.useState<"vibe" | "audit">("vibe");
   const [isAnalyzing, setIsAnalyzing] = React.useState(false);
   const [analysisComplete, setAnalysisComplete] = React.useState(false);
   const [stepsExpanded, setStepsExpanded] = React.useState(true);
@@ -258,6 +261,8 @@ export function DatumApp() {
       return;
     }
 
+    setLoadedTreeData(treeData);
+
     updateLastStep({
       label: `Resolved ${cleanName} — ${treeData.totalFiles.toLocaleString()} files in tree`,
       status: "done",
@@ -395,6 +400,7 @@ export function DatumApp() {
     setAuditData(null);
     setAuditError(null);
     setDetectedStack(null);
+    setLoadedTreeData(null);
     setCurrentSteps([]);
   };
 
@@ -456,44 +462,60 @@ export function DatumApp() {
           onToggleLogin={handleToggleLogin}
           isFigmaConnected={isFigmaConnected}
           onToggleFigmaConnection={handleToggleFigmaConnection}
+          workspaceView={workspaceView}
+          onToggleWorkspaceView={setWorkspaceView}
         />
 
         {/* Content Area */}
         <main
           ref={mainScrollRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto relative scroll-smooth"
+          className="flex-1 overflow-hidden relative"
         >
           {!activeItem ? (
-            <HeroView
+            <div className="h-full overflow-y-auto">
+              <HeroView
+                sourceType={sourceType}
+                setSourceType={setSourceType}
+                inputValue={inputValue}
+                setInputValue={setInputValue}
+                onStartAnalysis={handleStartAnalysis}
+              />
+            </div>
+          ) : analysisComplete && workspaceView === "vibe" ? (
+            <VibeWorkspace
+              activeItem={activeItem}
               sourceType={sourceType}
-              setSourceType={setSourceType}
-              inputValue={inputValue}
-              setInputValue={setInputValue}
-              onStartAnalysis={handleStartAnalysis}
+              treeData={loadedTreeData}
+              detectedStack={detectedStack}
+              activeModel={activeModel}
+              isLoggedIn={isLoggedIn}
+              onReset={resetToNew}
             />
           ) : (
-            <AnalysisView
-              sourceType={sourceType}
-              activeItem={activeItem}
-              isAnalyzing={isAnalyzing}
-              analysisComplete={analysisComplete}
-              currentSteps={currentSteps}
-              stepsExpanded={stepsExpanded}
-              setStepsExpanded={setStepsExpanded}
-              activeModel={activeModel}
-              auditData={auditData}
-              auditError={auditError}
-              criticalApproved={criticalApproved}
-              isApproving={isApproving}
-              isLoggedIn={isLoggedIn}
-              userProfile={userProfile}
-              isFigmaConnected={isFigmaConnected}
-              handleToggleLogin={handleToggleLogin}
-              handleToggleFigmaConnection={handleToggleFigmaConnection}
-              handleApproveCriticalStep={handleApproveCriticalStep}
-              resetToNew={resetToNew}
-            />
+            <div className="h-full overflow-y-auto">
+              <AnalysisView
+                sourceType={sourceType}
+                activeItem={activeItem}
+                isAnalyzing={isAnalyzing}
+                analysisComplete={analysisComplete}
+                currentSteps={currentSteps}
+                stepsExpanded={stepsExpanded}
+                setStepsExpanded={setStepsExpanded}
+                activeModel={activeModel}
+                auditData={auditData}
+                auditError={auditError}
+                criticalApproved={criticalApproved}
+                isApproving={isApproving}
+                isLoggedIn={isLoggedIn}
+                userProfile={userProfile}
+                isFigmaConnected={isFigmaConnected}
+                handleToggleLogin={handleToggleLogin}
+                handleToggleFigmaConnection={handleToggleFigmaConnection}
+                handleApproveCriticalStep={handleApproveCriticalStep}
+                resetToNew={resetToNew}
+              />
+            </div>
           )}
         </main>
 

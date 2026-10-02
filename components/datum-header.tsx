@@ -12,6 +12,8 @@ interface DatumHeaderProps {
   activeItem: string | null;
   sourceType: "github" | "figma";
   analysisComplete: boolean;
+  workspaceView?: "vibe" | "audit";
+  onToggleWorkspaceView?: (view: "vibe" | "audit") => void;
   models: ModelOption[];
   selectedModelId: string;
   onSelectModel: (id: string) => void;
@@ -30,6 +32,8 @@ export function DatumHeader({
   activeItem,
   sourceType,
   analysisComplete,
+  workspaceView = "vibe",
+  onToggleWorkspaceView,
   models,
   selectedModelId,
   onSelectModel,
@@ -68,13 +72,42 @@ export function DatumHeader({
               {activeItem}
             </span>
             {analysisComplete && (
-              <span className="text-[10px] text-tide bg-tide/10 px-1.5 py-0.5 rounded-full font-sans hidden md:inline-block shrink-0">
-                Surveyed
+              <span className="text-[10px] text-tide bg-tide/10 border border-tide/20 px-2 py-0.5 rounded-full font-mono hidden md:inline-flex items-center gap-1 shrink-0">
+                <span className="h-1.5 w-1.5 rounded-full bg-tide animate-pulse" />
+                <span>Vibe Ready</span>
               </span>
             )}
           </div>
         )}
       </div>
+
+      {/* Center: Vibe Code vs Audit Mode Toggle (when a repo/file is active) */}
+      {activeItem && onToggleWorkspaceView && (
+        <div className="hidden sm:inline-flex items-center p-0.5 rounded-full border border-border bg-raised/50 text-xs font-mono">
+          <button
+            type="button"
+            onClick={() => onToggleWorkspaceView("vibe")}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              workspaceView === "vibe"
+                ? "bg-accent text-accent-foreground shadow-xs"
+                : "text-secondary hover:text-text"
+            }`}
+          >
+            ✨ Vibe Code
+          </button>
+          <button
+            type="button"
+            onClick={() => onToggleWorkspaceView("audit")}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              workspaceView === "audit"
+                ? "bg-accent text-accent-foreground shadow-xs"
+                : "text-secondary hover:text-text"
+            }`}
+          >
+            🔍 Audit
+          </button>
+        </div>
+      )}
 
       {/* Right: Model Selector, Auto-Pilot, and Auth Button */}
       <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">

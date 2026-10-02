@@ -47,3 +47,15 @@ export interface UserProfile {
   name: string;
   avatar: string;
 }
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant" | "system";
+  content: string;
+  createdAt: number;
+  codeBlocks?: Array<{
+    language: string;
+    filename?: string;
+    code: string;
+  }>;
+}
