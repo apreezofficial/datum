@@ -304,11 +304,11 @@ export function DatumApp() {
     }
 
     updateLastStep({
-      label: `Scanned ${foldersToScan.length} directories — mapped ${treeData.allUiFilesCount} UI component files`,
+      label: `Scanned ${foldersToScan.length} directories — mapped ${treeData.allUiFilesCount} source files`,
       status: "done",
     });
 
-    // STEP 4: Read and parse UI component files (live swiping ticker on a single step)
+    // STEP 4: Read and parse source files (live swiping ticker on a single step)
     if (treeData.uiFilesToRead.length > 0) {
       pushStep({
         id: "read-files",
@@ -327,7 +327,7 @@ export function DatumApp() {
       }
 
       updateLastStep({
-        label: `Parsed ${treeData.uiFilesToRead.length} UI component files`,
+        label: `Parsed ${treeData.uiFilesToRead.length} source files across codebase`,
         status: "done",
       });
     }
@@ -360,7 +360,7 @@ export function DatumApp() {
         setAuditData(realData);
         if (realData.stack) setDetectedStack(realData.stack);
         updateLastStep({
-          label: `Mounted ${treeData.allUiFilesCount} UI files · Ready to vibe code`,
+          label: `Mounted ${treeData.allUiFilesCount} files · Ready to vibe code`,
           status: "done",
         });
         setHistory((prev) => [

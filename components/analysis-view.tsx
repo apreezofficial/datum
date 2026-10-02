@@ -264,8 +264,8 @@ export function AnalysisView({
                 )}
               </div>
 
-              {/* GITHUB CRITICAL STEP: OPEN FIX PR (Only if deviations exist) */}
-              {(auditData?.totalDeviations ?? 0) > 0 ? (
+              {/* ACTION: OPEN FIX PR ON VERIFIED SECURITY OR BUG FINDINGS */}
+              {(auditData?.totalFindings ?? 0) > 0 ? (
                 <div
                   className={`border rounded-lg p-5 transition-all ${
                     criticalApproved
@@ -279,13 +279,13 @@ export function AnalysisView({
                         <ShieldAlert size={18} className="text-ochre shrink-0 mt-0.5" />
                         <div>
                           <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-ochre">
-                            Critical Action Authorization
+                            Action Authorization
                           </span>
                           <h3 className="text-sm font-bold text-text mt-0.5">
-                            Allow Datum to Open Fix Pull Request on {activeItem}?
+                            Open Fix Pull Request on {activeItem}?
                           </h3>
                           <p className="text-xs text-secondary mt-1 leading-relaxed">
-                            This will push branch <code className="font-mono text-text">datum/fix-design-drift</code> with {auditData?.totalDeviations ?? 0} token fixes and open a PR on GitHub.
+                            This will create branch <code className="font-mono text-text">datum/codebase-fixes</code> addressing the {auditData?.totalFindings ?? 0} security and reliability findings.
                           </p>
                         </div>
                       </div>
@@ -332,7 +332,7 @@ export function AnalysisView({
                               ) : (
                                 <>
                                   <ShieldCheck size={14} />
-                                  <span>Allow & Open Fix PR</span>
+                                  <span>Open Fix PR</span>
                                 </>
                               )}
                             </button>
@@ -345,10 +345,10 @@ export function AnalysisView({
                   <div className="space-y-3 text-xs">
                     <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-medium">
                       <CheckCircle2 size={18} />
-                      <span>Critical Step Authorized · Fix PR #1 Opened</span>
+                      <span>PR Opened on GitHub</span>
                     </div>
                     <p className="text-secondary text-xs pl-6 leading-relaxed">
-                      PR #1: &ldquo;fix: align {auditData?.totalDeviations ?? 0} tokens with design system benchmarks&rdquo; was opened on <code className="font-mono text-text">{activeItem}</code>.
+                      Branch <code className="font-mono text-text">datum/codebase-fixes</code> with proposed resolutions has been submitted to <code className="font-mono text-text">{activeItem}</code>.
                     </p>
                     <div className="pl-6 pt-1 flex flex-wrap items-center gap-3">
                       <a
@@ -369,17 +369,13 @@ export function AnalysisView({
                         <ExternalLink size={11} />
                       </a>
                       <span className="text-muted">·</span>
-                      <span className="font-mono text-[11px] text-muted">
-                        Branch: datum/fix-design-drift
-                      </span>
-                      <span className="text-muted">·</span>
                       <button
                         type="button"
                         onClick={resetToNew}
                         className="inline-flex items-center gap-1 text-secondary hover:text-text font-mono text-xs"
                       >
                         <RefreshCw size={12} />
-                        <span>Audit another codebase</span>
+                        <span>Inspect another codebase</span>
                       </button>
                     </div>
                   </div>
@@ -390,9 +386,9 @@ export function AnalysisView({
                   <div className="flex items-center gap-3">
                     <ShieldCheck size={20} className="text-emerald-500 shrink-0" />
                     <div>
-                      <h4 className="text-sm font-semibold text-text">Design System In Full Alignment</h4>
+                      <h4 className="text-sm font-semibold text-text">Codebase in Good Health</h4>
                       <p className="text-xs text-secondary mt-0.5">
-                        Zero token deviations found across all surveyed UI files on <code className="font-mono text-text">{activeItem}</code>. No Pull Request needed.
+                        Zero critical security vulnerabilities or defects identified on <code className="font-mono text-text">{activeItem}</code>.
                       </p>
                     </div>
                   </div>
@@ -402,7 +398,7 @@ export function AnalysisView({
                     className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded border border-border bg-surface text-text hover:bg-raised"
                   >
                     <RefreshCw size={12} />
-                    <span>Audit another</span>
+                    <span>Inspect another</span>
                   </button>
                 </div>
               )}
