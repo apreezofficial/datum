@@ -484,7 +484,7 @@ async function fetchFilesByPaths(
         const text = await res.text();
         results.push({
           path: filePath,
-          content: text.length > 4000 ? text.slice(0, 4000) + "\n...[truncated]" : text,
+          content: text.length > 2000 ? text.slice(0, 2000) + "\n...[truncated for analysis]" : text,
         });
       }
     } catch {
@@ -546,15 +546,16 @@ export async function auditCodebaseWithGroq(
     filesToAudit.map((f) => f.path)
   );
 
-  // Full tree as context for the AI (if provided)
-  const treeContext = options.fullTreeSample && options.fullTreeSample.length > 0
-    ? `\nFull repository file tree (${options.fullTreeSample.length} files):\n${options.fullTreeSample.join("\n")}\n`
+  // Budget files sent to the model to stay well within Groq message length limits:
+  // Compact tree listing and pack files up to a safe 24,000 character payload limit
+  const compactTree = options.fullTreeSample && options.fullTreeSample.length > 0
+    ? `\nKey repository files (${Math.min(40, options.fullTreeSample.length)}):\n${options.fullTreeSample.slice(0, 40).join("\n")}\n`
     : "";
 
   const systemPrompt = `You are Datum, an expert design system code auditor.
 Repository: "${targetUrl}"
 Stack: ${stack.ecosystem} · ${stack.language} · ${stack.stylingSystem}
-${treeContext}
+${compactTree}
 TASK: Audit the provided source files for design system drift.
 Look ONLY at actual code in the files provided. Report ONLY real violations you see in the code.
 
@@ -584,9 +585,21 @@ Return ONLY valid JSON:
   "deviations": [ { "file": string, "line": number, "currentValue": string, "suggestedToken": string, "suggestedValue": string, "delta": string, "confidence": number } ]
 }`;
 
+  // Assemble files within a strict 22,000 char budget to ensure messages fit comfortable in limits
+  let budgetRemaining = 22000;
+  const filesIncluded: Array<{ path: string; content: string }> = [];
+
+  for (const f of filesToAudit) {
+    if (budgetRemaining <= 500) break;
+    const sliceLen = Math.min(f.content.length, Math.min(budgetRemaining - 100, 1500));
+    const contentSlice = f.content.length > sliceLen ? f.content.slice(0, sliceLen) + "\n...[truncated]" : f.content;
+    filesIncluded.push({ path: f.path, content: contentSlice });
+    budgetRemaining -= contentSlice.length + 50;
+  }
+
   const filesPrompt =
-    `Here are the actual source files from ${targetUrl} to audit:\n\n` +
-    filesToAudit
+    `Here are the surveyed source files from ${targetUrl} to audit:\n\n` +
+    filesIncluded
       .map((f) => `=== FILE: ${f.path} ===\n${f.content}`)
       .join("\n\n---\n\n");
 
