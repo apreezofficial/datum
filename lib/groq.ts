@@ -1,23 +1,27 @@
 import { detectRepositoryStack, StackInfo } from "./stack-detector";
 
-export interface DesignDeviation {
+export interface AuditFinding {
   file: string;
   line: number;
-  currentValue: string;
-  suggestedToken: string;
-  suggestedValue: string;
-  delta: string | number;
-  confidence: number;
+  category: "security" | "todo" | "performance" | "bug" | "architecture";
+  severity: "high" | "medium" | "low";
+  title: string;
+  description: string;
+  snippet?: string;
+  suggestedFix?: string;
 }
 
 export interface AuditResult {
   source: string;
   modelUsed: string;
   stack: StackInfo;
-  driftScore: number;
+  healthScore: number;
+  driftScore?: number;
   totalFilesScanned: number;
-  totalDeviations: number;
-  deviations: DesignDeviation[];
+  totalFindings: number;
+  totalDeviations?: number;
+  findings: AuditFinding[];
+  todosFound: Array<{ file: string; line: number; text: string }>;
   summary: string;
 }
 
@@ -552,37 +556,40 @@ export async function auditCodebaseWithGroq(
     ? `\nKey repository files (${Math.min(40, options.fullTreeSample.length)}):\n${options.fullTreeSample.slice(0, 40).join("\n")}\n`
     : "";
 
-  const systemPrompt = `You are Datum, an expert design system code auditor.
+  const systemPrompt = `You are Datum, an expert software engineer and codebase intelligence auditor.
 Repository: "${targetUrl}"
 Stack: ${stack.ecosystem} · ${stack.language} · ${stack.stylingSystem}
 ${compactTree}
-TASK: Audit the provided source files for design system drift.
-Look ONLY at actual code in the files provided. Report ONLY real violations you see in the code.
 
-Look for:
-1. Arbitrary spacing (e.g. p-[13px], style={{ padding: '13px' }}) — suggest token (e.g. p-3 = 12px)
-2. Hardcoded hex colors (e.g. #3b82f7) — suggest CSS variable (e.g. var(--brand-500))
-3. Arbitrary border radius (e.g. rounded-[7px]) — suggest scale value (e.g. rounded-md = 6px)
-4. Non-scale font sizes, widths, gaps
+TASK: Audit the provided source code files for:
+1. SECURITY RISKS: Hardcoded secrets, unvalidated user inputs, unsafe evaluations, missing authentication checks, dangerous dependencies, or insecure API calls.
+2. GENUINE IN-CODE TODOS: Search the source code for real "TODO", "FIXME", "HACK", or unfinished stubs that are on the way to be completed. DO NOT invent or fabricate fake TODOs. Report only what literally appears in the code comments or code stubs.
+3. BUGS & RELIABILITY: Unhandled promise rejections, memory leaks, missing null checks, broken logic, or concurrency bugs.
+4. ARCHITECTURE / PERFORMANCE: Inefficient loops, unmemoized expensive calculations, missing indexes, or anti-patterns.
 
-IMPORTANT: Every deviation MUST have ALL these fields populated with real values from the code:
-- "file": exact file path from the files provided
-- "line": actual line number in that file
-- "currentValue": the EXACT problematic class or value found in the code (e.g. "p-[13px]", "#3b82f7")
-- "suggestedToken": the design token name to use instead (e.g. "p-3", "var(--brand-500)", "rounded-md")  
-- "suggestedValue": the resolved value of that token (e.g. "12px", "#3b82f6", "6px")
-- "delta": the difference (e.g. "+1px", "1.4 dE", "-2px")
-- "confidence": integer between 88 and 98
-
-Do NOT return deviations with empty strings for any field. If you can't find a specific violation in the code, do not include it.
-
-Return ONLY valid JSON:
+Return ONLY valid JSON matching this schema:
 {
-  "driftScore": number 0-100,
-  "totalFilesScanned": ${filesToAudit.length},
-  "totalDeviations": number,
+  "healthScore": number (0 to 100, where 100 is perfectly healthy),
   "summary": string,
-  "deviations": [ { "file": string, "line": number, "currentValue": string, "suggestedToken": string, "suggestedValue": string, "delta": string, "confidence": number } ]
+  "findings": [
+    {
+      "file": string,
+      "line": number,
+      "category": "security" | "todo" | "performance" | "bug" | "architecture",
+      "severity": "high" | "medium" | "low",
+      "title": string,
+      "description": string,
+      "snippet": string,
+      "suggestedFix": string
+    }
+  ],
+  "todosFound": [
+    {
+      "file": string,
+      "line": number,
+      "text": string
+    }
+  ]
 }`;
 
   // Assemble files within a strict 22,000 char budget to ensure messages fit comfortable in limits
@@ -598,7 +605,7 @@ Return ONLY valid JSON:
   }
 
   const filesPrompt =
-    `Here are the surveyed source files from ${targetUrl} to audit:\n\n` +
+    `Here are the surveyed source files from ${targetUrl} to inspect for security, real todos, and bugs:\n\n` +
     filesIncluded
       .map((f) => `=== FILE: ${f.path} ===\n${f.content}`)
       .join("\n\n---\n\n");
@@ -614,53 +621,44 @@ Return ONLY valid JSON:
 
     const parsed = JSON.parse(rawJson) as Partial<AuditResult>;
 
-    // Filter deviations — only keep ones with all required fields populated
-    const rawDeviations = Array.isArray(parsed.deviations) ? parsed.deviations : [];
-    const validDeviations = rawDeviations.filter(
-      (d) =>
-        d.file &&
-        typeof d.line === "number" &&
-        d.currentValue &&
-        d.currentValue.trim() !== "" &&
-        d.suggestedToken &&
-        d.suggestedToken.trim() !== "" &&
-        d.suggestedValue &&
-        d.suggestedValue.trim() !== "" &&
-        d.delta !== undefined &&
-        String(d.delta).trim() !== "" &&
-        typeof d.confidence === "number" &&
-        !isNaN(d.confidence)
+    // Filter findings — only keep ones with file, title, and description populated
+    const rawFindings = Array.isArray(parsed.findings) ? parsed.findings : [];
+    const validFindings = rawFindings.filter(
+      (f) => f.file && f.title && f.description && f.category
     );
 
-    // Compute driftScore deterministically based on real deviations found:
-    // If 0 deviations, drift is strictly 0.
-    // When deviations exist, calculate drift score realistically:
-    // - 1-2 minor deviations: 8 - 14% drift
-    // - 3-5 deviations: 15 - 28% drift
-    // - 6-10 deviations: 30 - 50% drift
-    // - >10 deviations: 50%+ drift
-    const totalDevs = validDeviations.length;
-    let drift = 0;
-    if (totalDevs > 0) {
-      const filesCount = Math.max(1, filesToAudit.length);
-      const ratio = totalDevs / filesCount;
-      const computedScore = Math.round(Math.min(95, Math.max(8, ratio * 30 + totalDevs * 3.5)));
-      drift = computedScore;
+    // Filter real in-code todos
+    const rawTodos = Array.isArray(parsed.todosFound) ? parsed.todosFound : [];
+    const validTodos = rawTodos.filter((t) => t.file && t.text);
+
+    // Compute healthScore: start at 100, deduct based on verified findings severity
+    let deductions = 0;
+    for (const f of validFindings) {
+      if (f.severity === "high") deductions += 15;
+      else if (f.severity === "medium") deductions += 8;
+      else deductions += 3;
     }
+    const computedHealth = Math.max(20, Math.min(100, 100 - deductions));
+    const healthScore = typeof parsed.healthScore === "number" && !isNaN(parsed.healthScore)
+      ? Math.max(10, Math.min(100, parsed.healthScore))
+      : computedHealth;
 
     return {
       source: targetUrl,
       modelUsed,
       stack,
-      driftScore: drift,
+      healthScore,
+      driftScore: 100 - healthScore,
       totalFilesScanned: filesToAudit.length,
-      totalDeviations: totalDevs,
+      totalFindings: validFindings.length,
+      totalDeviations: validFindings.length,
+      findings: validFindings,
+      todosFound: validTodos,
       summary:
         parsed.summary?.trim() ||
-        (totalDevs === 0
-          ? "No design deviations detected. Tokens are in full alignment!"
-          : `${totalDevs} deviation${totalDevs === 1 ? "" : "s"} detected across ${filesToAudit.length} UI files.`),
-      deviations: validDeviations,
+        (validFindings.length === 0
+          ? "No security risks or critical bugs detected across surveyed codebase files."
+          : `${validFindings.length} findings (${validFindings.filter((f) => f.category === 'security').length} security, ${validTodos.length} in-code todos) identified.`),
     };
   } catch (err) {
     throw err;

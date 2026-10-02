@@ -8,22 +8,27 @@ export interface StepItem {
   status: "pending" | "running" | "done";
 }
 
-export interface AuditDeviation {
+export interface AuditFinding {
   file: string;
   line: number;
-  currentValue: string;
-  suggestedToken: string;
-  suggestedValue: string;
-  delta: string | number;
-  confidence: number;
+  category: "security" | "todo" | "performance" | "bug" | "architecture";
+  severity: "high" | "medium" | "low";
+  title: string;
+  description: string;
+  snippet?: string;
+  suggestedFix?: string;
 }
 
 export interface AuditData {
-  driftScore: number;
+  driftScore?: number;
+  healthScore: number;
   totalFilesScanned: number;
-  totalDeviations: number;
+  totalFindings: number;
+  totalDeviations?: number;
+  deviations?: any[];
   summary: string;
-  deviations: AuditDeviation[];
+  findings: AuditFinding[];
+  todosFound: Array<{ file: string; line: number; text: string }>;
   stack?: StackInfo;
 }
 

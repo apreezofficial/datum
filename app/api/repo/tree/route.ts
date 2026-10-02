@@ -46,18 +46,15 @@ export async function GET(req: Request) {
         .filter((f) => f.type === "blob")
         .map((f) => f.path);
 
-      // Exclude junk / non-code / internal tooling directories
+      // Exclude only purely generated build artifacts and lockfiles
       const ignoredDirPrefixes = [
         "node_modules/",
         ".git/",
-        ".github/",
         ".next/",
-        ".vscode/",
         "dist/",
         "build/",
         "out/",
         "coverage/",
-        "public/",
         "vendor/",
       ];
 
@@ -66,27 +63,25 @@ export async function GET(req: Request) {
         return !ignoredDirPrefixes.some((prefix) => lower.startsWith(prefix) || lower.includes("/" + prefix));
       });
 
-      // Match all UI components, views, layouts, and style files anywhere in the repo (including src/)
-      const uiFiles = codeFiles.filter((path) => {
+      // Match all meaningful code and configuration files across the entire codebase
+      const sourceFiles = codeFiles.filter((path) => {
         const p = path.toLowerCase();
-        const isUiExt =
-          p.endsWith(".tsx") ||
-          p.endsWith(".jsx") ||
-          p.endsWith(".vue") ||
-          p.endsWith(".svelte") ||
-          p.endsWith(".blade.php") ||
-          p.endsWith(".html") ||
-          p.endsWith(".css") ||
-          p.endsWith(".scss");
+        // Ignore binaries, images, fonts, lockfiles
+        const isBinaryOrAsset =
+          p.endsWith(".png") ||
+          p.endsWith(".jpg") ||
+          p.endsWith(".jpeg") ||
+          p.endsWith(".gif") ||
+          p.endsWith(".svg") ||
+          p.endsWith(".ico") ||
+          p.endsWith(".woff") ||
+          p.endsWith(".woff2") ||
+          p.endsWith(".ttf") ||
+          p.endsWith(".lock") ||
+          p.endsWith("package-lock.json") ||
+          p.endsWith("pnpm-lock.yaml");
 
-        const isTestOrConfig =
-          p.includes(".test.") ||
-          p.includes(".spec.") ||
-          p.includes(".stories.") ||
-          p.includes("tailwind.config") ||
-          p.includes("postcss.config");
-
-        return isUiExt && !isTestOrConfig;
+        return !isBinaryOrAsset;
       });
 
       // Extract meaningful source folders across code files (e.g. src/components, app, etc.)
@@ -101,8 +96,8 @@ export async function GET(req: Request) {
         )
       );
 
-      // Return ALL UI files for full codebase scanning (up to 35 for thorough deep scan)
-      const uiFilesToRead = uiFiles.length > 0 ? uiFiles.slice(0, 35) : allFiles.filter((p) => p.endsWith(".html") || p.endsWith(".css")).slice(0, 35);
+      // Return representative source files across the codebase (up to 40 for thorough inspection)
+      const filesToInspect = sourceFiles.slice(0, 40);
 
       return NextResponse.json({
         success: true,
@@ -111,9 +106,9 @@ export async function GET(req: Request) {
           repo: repoName,
           branch,
           totalFiles: allFiles.length,
-          allUiFilesCount: uiFiles.length,
+          allUiFilesCount: sourceFiles.length,
           allFolders,
-          uiFilesToRead,
+          uiFilesToRead: filesToInspect,
           fullTreeSample: allFiles.slice(0, 200),
         },
       });

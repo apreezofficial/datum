@@ -167,68 +167,101 @@ export function AnalysisView({
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <h2 className="text-sm font-bold text-text truncate max-w-[220px] sm:max-w-none">
-                        Codebase Survey · {activeItem}
+                        Codebase Health & Security Audit · {activeItem}
                       </h2>
                       <span className="text-[10px] font-mono bg-tide/10 text-tide px-2 py-0.5 rounded-full shrink-0">
                         {activeModel.name}
                       </span>
                     </div>
                     <p className="text-xs text-secondary mt-0.5 line-clamp-2 sm:line-clamp-none">
-                      {auditData?.summary || "Analyzing UI components for design system deviations..."}
+                      {auditData?.summary || "Audited codebase for security risks, genuine in-code TODOs, and reliability issues."}
                     </p>
                   </div>
                   <div className="text-left xs:text-right shrink-0 flex xs:flex-col items-center xs:items-end justify-between xs:justify-start">
-                    <span className="text-[10px] text-muted font-mono block">DRIFT SCORE</span>
+                    <span className="text-[10px] text-muted font-mono block">HEALTH SCORE</span>
                     <span
                       className={`text-lg font-bold font-mono ${
-                        (auditData?.driftScore ?? 0) >= 60
-                          ? "text-peak"
-                          : (auditData?.driftScore ?? 0) >= 30
+                        (auditData?.healthScore ?? 100) >= 80
+                          ? "text-emerald-500"
+                          : (auditData?.healthScore ?? 100) >= 50
                           ? "text-ochre"
-                          : "text-emerald-500"
+                          : "text-peak"
                       }`}
                     >
-                      {auditData?.driftScore !== undefined ? `${auditData.driftScore} / 100` : "-- / 100"}
+                      {auditData?.healthScore !== undefined ? `${auditData.healthScore} / 100` : "100 / 100"}
                     </span>
                   </div>
                 </div>
 
-                {/* Mismatches List */}
-                <div className="space-y-2 text-xs font-mono">
-                  {auditData?.deviations && auditData.deviations.length > 0 ? (
-                    auditData.deviations.map((dev, idx) => (
-                    <div
-                      key={idx}
-                      className="p-2.5 border border-border-subtle rounded bg-raised/40 flex items-center justify-between gap-2 sm:gap-3"
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="text-[10px] text-muted truncate">
-                          {dev.file}:{dev.line}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5 mt-0.5 text-xs">
-                          <span className="text-peak line-through truncate max-w-[100px] xs:max-w-none">{dev.currentValue}</span>
-                          <span className="text-muted text-[11px]">→</span>
-                          <span className="text-tide font-medium truncate max-w-[160px] xs:max-w-none">
-                            {dev.suggestedToken} ({dev.suggestedValue})
+                {/* Audit Findings List (Security, Bugs, Performance) */}
+                <div className="space-y-2.5 text-xs font-mono">
+                  {auditData?.findings && auditData.findings.length > 0 ? (
+                    auditData.findings.map((f, idx) => (
+                      <div
+                        key={idx}
+                        className="p-3 border border-border-subtle rounded bg-raised/40 space-y-1.5"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span
+                              className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded font-semibold ${
+                                f.category === "security"
+                                  ? "bg-peak/15 text-peak border border-peak/30"
+                                  : f.category === "bug"
+                                  ? "bg-ochre/15 text-ochre border border-ochre/30"
+                                  : "bg-surface border border-border text-secondary"
+                              }`}
+                            >
+                              {f.category}
+                            </span>
+                            <span className="text-xs font-semibold text-text truncate">{f.title}</span>
+                          </div>
+                          <span
+                            className={`text-[10px] capitalize shrink-0 ${
+                              f.severity === "high"
+                                ? "text-peak font-bold"
+                                : f.severity === "medium"
+                                ? "text-ochre"
+                                : "text-muted"
+                            }`}
+                          >
+                            {f.severity}
                           </span>
                         </div>
+                        <div className="text-[11px] text-secondary font-sans leading-relaxed">{f.description}</div>
+                        <div className="flex items-center justify-between text-[10px] text-muted pt-1 border-t border-border/40">
+                          <span>
+                            {f.file}:{f.line}
+                          </span>
+                          {f.suggestedFix && (
+                            <span className="text-tide truncate max-w-[220px]">Fix: {f.suggestedFix}</span>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-right shrink-0 pl-2">
-                        <span className="text-[11px] text-secondary block whitespace-nowrap">
-                          Δ {typeof dev.delta === "number" ? `+${dev.delta}` : dev.delta}
-                        </span>
-                        <span className="text-[9px] text-muted font-sans whitespace-nowrap">
-                          {dev.confidence > 1 ? dev.confidence : Math.round(dev.confidence * 100)}% conf
-                        </span>
-                      </div>
-                    </div>
-                  ))
+                    ))
                   ) : (
-                    <div className="p-4 border border-border-subtle rounded bg-raised/20 text-center text-xs text-secondary">
-                      No design deviations detected in surveyed component files. Tokens are in full alignment!
+                    <div className="p-3.5 border border-border-subtle rounded bg-raised/20 text-center text-xs text-secondary font-sans">
+                      No security vulnerabilities or critical defects identified in inspected files.
                     </div>
                   )}
                 </div>
+
+                {/* Real In-Code TODOs Section */}
+                {auditData?.todosFound && auditData.todosFound.length > 0 && (
+                  <div className="pt-3 border-t border-border-subtle space-y-2">
+                    <span className="text-[10px] font-mono text-muted uppercase tracking-wider block">
+                      In-Code TODOs & Work In Progress ({auditData.todosFound.length})
+                    </span>
+                    <div className="space-y-1.5 font-mono text-xs">
+                      {auditData.todosFound.map((t, idx) => (
+                        <div key={idx} className="p-2 border border-border-subtle rounded bg-raised/30 flex items-start gap-2">
+                          <span className="text-[10px] text-secondary shrink-0 pt-0.5">{t.file}:{t.line}</span>
+                          <span className="text-[11px] text-text font-sans flex-1">{t.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* GITHUB CRITICAL STEP: OPEN FIX PR (Only if deviations exist) */}
