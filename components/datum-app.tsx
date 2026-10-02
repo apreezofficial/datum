@@ -4,6 +4,7 @@ import * as React from "react";
 import { useTheme } from "@/lib/theme";
 import { DatumLogoSmall } from "@/components/datum-logo";
 import { HeaderPlaneAnimation } from "@/components/header-plane-animation";
+import { detectRepositoryStack, StackInfo } from "@/lib/stack-detector";
 import {
   GitBranch,
   FolderGit2,
@@ -60,6 +61,7 @@ interface AuditData {
   totalDeviations: number;
   summary: string;
   deviations: AuditDeviation[];
+  stack?: StackInfo;
 }
 
 export interface ModelOption {
@@ -108,6 +110,7 @@ export function DatumApp() {
   const [isFigmaConnected, setIsFigmaConnected] = React.useState(false);
   const [autopilot, setAutopilot] = React.useState(false);
   const [auditData, setAuditData] = React.useState<AuditData | null>(null);
+  const [detectedStack, setDetectedStack] = React.useState<StackInfo | null>(null);
 
   // Model selection state
   const [models, setModels] = React.useState<ModelOption[]>(DEFAULT_MODELS);
@@ -165,7 +168,7 @@ export function DatumApp() {
     { id: string; name: string; type: "github" | "figma"; summary: string }[]
   >([]);
 
-  // GitHub steps (Image 2 style)
+  // GitHub steps (Image 2 style with dynamic stack detection)
   const githubSteps: StepItem[] = [
     {
       id: "clone",
@@ -176,31 +179,31 @@ export function DatumApp() {
     {
       id: "scan",
       icon: <FolderGit2 size={14} className="text-secondary" />,
-      label: "Scanned 159 files across repository",
+      label: `Scanned ${detectedStack?.fileCount || 159} files across repository`,
       status: currentStepIndex > 1 ? "done" : currentStepIndex === 1 && isAnalyzing ? "running" : "pending",
     },
     {
-      id: "pkg",
+      id: "manifest",
       icon: <Package size={14} className="text-secondary" />,
-      label: "Read package.json",
+      label: detectedStack?.steps[2]?.label || "Read package.json & dependencies",
       status: currentStepIndex > 2 ? "done" : currentStepIndex === 2 && isAnalyzing ? "running" : "pending",
     },
     {
-      id: "tailwind",
+      id: "styling",
       icon: <FileCode size={14} className="text-secondary" />,
-      label: "Read tailwind.config.ts & design tokens",
+      label: detectedStack?.steps[3]?.label || "Read tailwind.config.ts & design tokens",
       status: currentStepIndex > 3 ? "done" : currentStepIndex === 3 && isAnalyzing ? "running" : "pending",
     },
     {
-      id: "tsconfig",
+      id: "structure",
       icon: <FileText size={14} className="text-secondary" />,
-      label: "Read tsconfig.json",
+      label: detectedStack?.steps[4]?.label || "Read tsconfig.json & component tree",
       status: currentStepIndex > 4 ? "done" : currentStepIndex === 4 && isAnalyzing ? "running" : "pending",
     },
     {
       id: "audit",
       icon: <Compass size={14} className="text-secondary" />,
-      label: "Audit completed: 38 UI deviations mapped",
+      label: `Audit completed: ${auditData?.totalDeviations || 38} UI deviations mapped`,
       status: currentStepIndex > 5 ? "done" : currentStepIndex === 5 && isAnalyzing ? "running" : "pending",
     },
   ];
@@ -257,6 +260,13 @@ export function DatumApp() {
     setCurrentStepIndex(0);
     setAuditData(null);
 
+    // Fast stack detection
+    if (!isFigma) {
+      detectRepositoryStack(cleanName).then((stk) => {
+        setDetectedStack(stk);
+      });
+    }
+
     // Trigger AI backend audit
     fetch("/api/groq/audit", {
       method: "POST",
@@ -271,6 +281,9 @@ export function DatumApp() {
       .then((res) => {
         if (res?.success && res?.data) {
           setAuditData(res.data);
+          if (res.data.stack) {
+            setDetectedStack(res.data.stack);
+          }
         }
       })
       .catch((err) => {
@@ -297,7 +310,7 @@ export function DatumApp() {
           ...prev.filter((item) => item.name !== cleanName),
         ]);
       }
-    }, 650);
+    }, 280);
   };
 
   const handleApproveCriticalStep = () => {
@@ -305,7 +318,7 @@ export function DatumApp() {
     setTimeout(() => {
       setIsApproving(false);
       setCriticalApproved(true);
-    }, 1100);
+    }, 450);
   };
 
   const handleToggleLogin = () => {
@@ -315,8 +328,8 @@ export function DatumApp() {
     } else {
       setIsLoggedIn(true);
       setUserProfile({
-        name: "alex_dev",
-        avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=64&h=64&fit=crop&crop=face",
+        name: "apreezofficial",
+        avatar: "https://github.com/apreezofficial.png",
       });
     }
   };
@@ -333,6 +346,7 @@ export function DatumApp() {
     setCriticalApproved(false);
     setCurrentStepIndex(0);
     setAuditData(null);
+    setDetectedStack(null);
   };
 
   return (
@@ -997,24 +1011,45 @@ export function DatumApp() {
                             </div>
                           </div>
                         ) : (
-                          <div className="space-y-2 text-xs">
+                          <div className="space-y-3 text-xs">
                             <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-medium">
                               <CheckCircle2 size={18} />
-                              <span>Critical Step Authorized · Fix PR Opened</span>
+                              <span>Critical Step Authorized · Fix PR #1 Opened</span>
                             </div>
-                            <p className="text-secondary text-xs pl-6">
-                              PR #12: &ldquo;fix: align 38 values with design benchmarks&rdquo; was opened on {activeItem}.
+                            <p className="text-secondary text-xs pl-6 leading-relaxed">
+                              PR #1: &ldquo;fix: align {auditData?.totalDeviations || 38} tokens with design system benchmarks&rdquo; was opened on <code className="font-mono text-text">{activeItem}</code>.
                             </p>
-                            <div className="pl-6 pt-1 flex items-center gap-3">
+                            <div className="pl-6 pt-1 flex flex-wrap items-center gap-3">
                               <a
-                                href={`https://github.com/${activeItem}`}
+                                href={
+                                  activeItem?.includes("/")
+                                    ? `https://github.com/${activeItem}/pull/1`
+                                    : "https://github.com/apreezofficial/datum/pull/1"
+                                }
                                 target="_blank"
                                 rel="noreferrer"
-                                className="inline-flex items-center gap-1 font-mono text-tide hover:underline"
+                                className="inline-flex items-center gap-1 font-mono text-xs text-tide hover:underline"
                               >
-                                <span>View PR on GitHub</span>
+                                <GitPullRequest size={13} />
+                                <span>
+                                  github.com/
+                                  {activeItem?.includes("/") ? `${activeItem}/pull/1` : "apreezofficial/datum/pull/1"}
+                                </span>
                                 <ExternalLink size={11} />
                               </a>
+                              <span className="text-muted">·</span>
+                              <span className="font-mono text-[11px] text-muted">
+                                Branch: datum/fix-design-drift
+                              </span>
+                              <span className="text-muted">·</span>
+                              <button
+                                type="button"
+                                onClick={resetToNew}
+                                className="inline-flex items-center gap-1 text-secondary hover:text-text font-mono text-xs"
+                              >
+                                <RefreshCw size={12} />
+                                <span>Audit another codebase</span>
+                              </button>
                             </div>
                           </div>
                         )}

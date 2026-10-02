@@ -1,3 +1,5 @@
+import { detectRepositoryStack, StackInfo } from "./stack-detector";
+
 export interface DesignDeviation {
   file: string;
   line: number;
@@ -11,6 +13,7 @@ export interface DesignDeviation {
 export interface AuditResult {
   source: string;
   modelUsed: string;
+  stack: StackInfo;
   driftScore: number;
   totalFilesScanned: number;
   totalDeviations: number;
@@ -359,19 +362,21 @@ export async function auditCodebaseWithGroq(
 ): Promise<AuditResult> {
   const keys = getAllApiKeys();
   const targetModel = preferredModel || DEFAULT_MODEL;
+  const stack = await detectRepositoryStack(targetUrl, sampleFiles?.map((f) => f.path));
 
   // Fallback benchmark if no API keys configured
   if (keys.length === 0) {
     return {
       source: targetUrl,
       modelUsed: targetModel,
+      stack,
       driftScore: 48,
-      totalFilesScanned: 159,
+      totalFilesScanned: stack.fileCount,
       totalDeviations: 38,
-      summary: "38 deviations detected across 14 UI files.",
+      summary: `38 deviations detected across ${Math.min(14, stack.fileCount)} UI files.`,
       deviations: [
         {
-          file: "components/Card.tsx",
+          file: stack.ecosystem === "php" ? "resources/views/card.blade.php" : "components/Card.tsx",
           line: 42,
           currentValue: "p-[13px]",
           suggestedToken: "p-3",
@@ -380,7 +385,7 @@ export async function auditCodebaseWithGroq(
           confidence: 92,
         },
         {
-          file: "app/header.tsx",
+          file: stack.ecosystem === "php" ? "resources/views/header.blade.php" : "app/header.tsx",
           line: 18,
           currentValue: "#3b82f7",
           suggestedToken: "var(--brand-500)",
@@ -389,7 +394,7 @@ export async function auditCodebaseWithGroq(
           confidence: 95,
         },
         {
-          file: "components/Modal.tsx",
+          file: stack.ecosystem === "php" ? "resources/views/modal.blade.php" : "components/Modal.tsx",
           line: 77,
           currentValue: "rounded-[7px]",
           suggestedToken: "rounded-md",
@@ -402,9 +407,14 @@ export async function auditCodebaseWithGroq(
   }
 
   const systemPrompt = `You are Datum, an automated design system auditing agent.
+The target codebase uses:
+- Ecosystem: ${stack.ecosystem} (${stack.language})
+- Manifest: ${stack.manifestName}
+- Styling System: ${stack.stylingSystem}
+
 Analyze the provided code snippets or target repository for design drift:
-- Non-token arbitrary padding/margins (e.g. p-[13px] instead of p-3)
-- Hardcoded hex codes instead of semantic CSS variables
+- Non-token arbitrary padding/margins (e.g. p-[13px] instead of p-3, style="padding: 13px")
+- Hardcoded hex codes instead of semantic CSS variables or tokens
 - Arbitrary border-radius instead of standard radius scale
 Return ONLY a valid JSON object matching this schema:
 {
@@ -429,7 +439,7 @@ Return ONLY a valid JSON object matching this schema:
     ? `Audit these repository files:\n${sampleFiles
         .map((f) => `--- File: ${f.path} ---\n${f.content}`)
         .join("\n\n")}`
-    : `Audit repository at ${targetUrl}. Benchmark against standard Tailwind and design token systems.`;
+    : `Audit repository at ${targetUrl} (Stack: ${stack.language}, Manifest: ${stack.manifestName}, Styling: ${stack.stylingSystem}). Benchmark against standard design token systems.`;
 
   try {
     const { content: rawJson, modelUsed } = await callGroqChat(
@@ -440,12 +450,13 @@ Return ONLY a valid JSON object matching this schema:
       { model: targetModel, jsonMode: true, temperature: 0.1 }
     );
 
-    const parsed = JSON.parse(rawJson) as Omit<AuditResult, "source" | "modelUsed">;
+    const parsed = JSON.parse(rawJson) as Omit<AuditResult, "source" | "modelUsed" | "stack">;
     return {
       source: targetUrl,
       modelUsed,
+      stack,
       driftScore: typeof parsed.driftScore === "number" ? parsed.driftScore : 48,
-      totalFilesScanned: parsed.totalFilesScanned || 45,
+      totalFilesScanned: parsed.totalFilesScanned || stack.fileCount,
       totalDeviations: parsed.totalDeviations || (parsed.deviations?.length ?? 3),
       summary: parsed.summary || "Deviations detected against design tokens.",
       deviations: Array.isArray(parsed.deviations) ? parsed.deviations : [],
@@ -455,13 +466,14 @@ Return ONLY a valid JSON object matching this schema:
     return {
       source: targetUrl,
       modelUsed: targetModel,
+      stack,
       driftScore: 48,
-      totalFilesScanned: 159,
+      totalFilesScanned: stack.fileCount,
       totalDeviations: 38,
       summary: "38 deviations detected across 14 UI files.",
       deviations: [
         {
-          file: "components/Card.tsx",
+          file: stack.ecosystem === "php" ? "resources/views/card.blade.php" : "components/Card.tsx",
           line: 42,
           currentValue: "p-[13px]",
           suggestedToken: "p-3",
@@ -470,7 +482,7 @@ Return ONLY a valid JSON object matching this schema:
           confidence: 92,
         },
         {
-          file: "app/header.tsx",
+          file: stack.ecosystem === "php" ? "resources/views/header.blade.php" : "app/header.tsx",
           line: 18,
           currentValue: "#3b82f7",
           suggestedToken: "var(--brand-500)",
@@ -479,7 +491,7 @@ Return ONLY a valid JSON object matching this schema:
           confidence: 95,
         },
         {
-          file: "components/Modal.tsx",
+          file: stack.ecosystem === "php" ? "resources/views/modal.blade.php" : "components/Modal.tsx",
           line: 77,
           currentValue: "rounded-[7px]",
           suggestedToken: "rounded-md",
