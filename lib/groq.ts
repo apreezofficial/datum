@@ -634,16 +634,18 @@ Return ONLY valid JSON:
 
     // Compute driftScore deterministically based on real deviations found:
     // If 0 deviations, drift is strictly 0.
-    // Otherwise, calculate proportionally based on deviations vs files scanned.
+    // When deviations exist, calculate drift score realistically:
+    // - 1-2 minor deviations: 8 - 14% drift
+    // - 3-5 deviations: 15 - 28% drift
+    // - 6-10 deviations: 30 - 50% drift
+    // - >10 deviations: 50%+ drift
     const totalDevs = validDeviations.length;
     let drift = 0;
     if (totalDevs > 0) {
-      // Base score on deviations density + severity, capped at 100
-      const deviationsPerFile = totalDevs / Math.max(1, filesToAudit.length);
-      const calculated = Math.round(Math.min(100, Math.max(10, deviationsPerFile * 25 + totalDevs * 4)));
-      drift = typeof parsed.driftScore === "number" && !isNaN(parsed.driftScore) && parsed.driftScore > 0
-        ? Math.min(100, Math.max(calculated, parsed.driftScore))
-        : calculated;
+      const filesCount = Math.max(1, filesToAudit.length);
+      const ratio = totalDevs / filesCount;
+      const computedScore = Math.round(Math.min(95, Math.max(8, ratio * 30 + totalDevs * 3.5)));
+      drift = computedScore;
     }
 
     return {

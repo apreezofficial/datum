@@ -46,42 +46,58 @@ export async function GET(req: Request) {
         .filter((f) => f.type === "blob")
         .map((f) => f.path);
 
-      // Filter for UI-relevant files
-      const uiFiles = allFiles.filter((path) => {
+      // Exclude junk / non-code / internal tooling directories
+      const ignoredDirPrefixes = [
+        "node_modules/",
+        ".git/",
+        ".github/",
+        ".next/",
+        ".vscode/",
+        "dist/",
+        "build/",
+        "out/",
+        "coverage/",
+        "public/",
+        "vendor/",
+      ];
+
+      const codeFiles = allFiles.filter((p) => {
+        const lower = p.toLowerCase();
+        return !ignoredDirPrefixes.some((prefix) => lower.startsWith(prefix) || lower.includes("/" + prefix));
+      });
+
+      // Match all UI components, views, layouts, and style files anywhere in the repo (including src/)
+      const uiFiles = codeFiles.filter((path) => {
         const p = path.toLowerCase();
         const isUiExt =
           p.endsWith(".tsx") ||
           p.endsWith(".jsx") ||
           p.endsWith(".vue") ||
           p.endsWith(".svelte") ||
+          p.endsWith(".blade.php") ||
           p.endsWith(".html") ||
-          p.endsWith(".css");
-        const isComponentOrView =
-          p.includes("component") ||
-          p.includes("ui/") ||
-          p.includes("views/") ||
-          p.includes("pages/") ||
-          p.includes("app/") ||
-          p.includes("styles") ||
-          p.includes("layout");
-        return (
-          isUiExt &&
-          isComponentOrView &&
-          !p.includes(".test.") &&
-          !p.includes(".spec.") &&
-          !p.includes(".stories.")
-        );
+          p.endsWith(".css") ||
+          p.endsWith(".scss");
+
+        const isTestOrConfig =
+          p.includes(".test.") ||
+          p.includes(".spec.") ||
+          p.includes(".stories.") ||
+          p.includes("tailwind.config") ||
+          p.includes("postcss.config");
+
+        return isUiExt && !isTestOrConfig;
       });
 
-      // Extract all unique folder directories in the repository
+      // Extract meaningful source folders across code files (e.g. src/components, app, etc.)
       const allFolders = Array.from(
         new Set(
-          allFiles
+          codeFiles
             .map((p) => {
               const lastSlash = p.lastIndexOf("/");
               return lastSlash > -1 ? p.substring(0, lastSlash) : "root";
             })
-            .filter(Boolean)
+            .filter((folder) => folder !== "root" && !folder.startsWith("."))
         )
       );
 
