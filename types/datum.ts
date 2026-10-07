@@ -30,6 +30,13 @@ export interface AuditData {
   findings: AuditFinding[];
   todosFound: Array<{ file: string; line: number; text: string }>;
   stack?: StackInfo;
+  repo?: string;
+  branch?: string;
+  modelUsed?: string;
+  /** Files that matched but were not read (too large, over the file cap, time budget). */
+  filesSkipped?: number;
+  /** Set when the AI review did not run or failed; static results are still valid. */
+  aiNote?: string;
 }
 
 export interface ModelOption {
