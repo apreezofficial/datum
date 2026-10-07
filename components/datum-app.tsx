@@ -26,7 +26,6 @@ import type {
   AuditData,
   ModelOption,
   HistoryItem,
-  UserProfile,
 } from "@/types/datum";
 
 const DEFAULT_MODELS: ModelOption[] = [
@@ -60,12 +59,12 @@ const DEFAULT_MODELS: ModelOption[] = [
 export function DatumApp() {
   const { theme, toggleTheme } = useTheme();
 
-  // Sidebar and auth
-  const [sidebarOpen, setSidebarOpen] = React.useState(true);
-  const [isLoggedIn, setIsLoggedIn] = React.useState(false);
-  const [userProfile, setUserProfile] = React.useState<UserProfile | null>(null);
-  const [isFigmaConnected, setIsFigmaConnected] = React.useState(false);
-  const [autopilot, setAutopilot] = React.useState(false);
+  // Open the sidebar by default on desktop only; on phones it is a drawer.
+  React.useEffect(() => {
+    if (window.matchMedia("(min-width: 768px)").matches) setSidebarOpen(true);
+  }, []);
+
+  const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [auditData, setAuditData] = React.useState<AuditData | null>(null);
   const [auditError, setAuditError] = React.useState<string | null>(null);
   const [folderSelection, setFolderSelection] = React.useState<FolderSelection | null>(null);
@@ -76,7 +75,6 @@ export function DatumApp() {
   const [selectedModelId, setSelectedModelId] = React.useState("openai/gpt-oss-120b");
 
   // Survey state
-  const [sourceType, setSourceType] = React.useState<"github" | "figma">("github");
   const [inputValue, setInputValue] = React.useState("");
   const [activeItem, setActiveItem] = React.useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = React.useState(false);
@@ -85,10 +83,6 @@ export function DatumApp() {
 
   // Dynamic step list — built step-by-step as things happen
   const [currentSteps, setCurrentSteps] = React.useState<StepItem[]>([]);
-
-  // Critical step gate
-  const [criticalApproved, setCriticalApproved] = React.useState(false);
-  const [isApproving, setIsApproving] = React.useState(false);
 
   // History list
   const [history, setHistory] = React.useState<HistoryItem[]>([]);
@@ -136,9 +130,9 @@ export function DatumApp() {
 
   // Auto-scroll as steps change
   React.useEffect(() => {
-    if (!activeItem) return;
-    if (!userScrolledUpRef.current) scrollToBottom("smooth");
-  }, [currentSteps, analysisComplete, criticalApproved, activeItem, scrollToBottom]);
+    if (!activeItem || !isAnalyzing) return;
+    if (!userScrolledUpRef.current) scrollToBottom("auto");
+  }, [currentSteps, isAnalyzing, activeItem, scrollToBottom]);
 
   // Helper: add a new step and scroll
   const pushStep = React.useCallback((step: StepItem) => {
@@ -161,7 +155,6 @@ export function DatumApp() {
     if (!rawUrl.trim()) return;
 
     const isFigma = rawUrl.toLowerCase().includes("figma.com");
-    setSourceType("github");
 
     const cleanName = rawUrl
       .trim()
@@ -173,7 +166,6 @@ export function DatumApp() {
     setActiveItem(cleanName);
     setIsAnalyzing(true);
     setAnalysisComplete(false);
-    setCriticalApproved(false);
     setAuditData(null);
     setAuditError(null);
     setDetectedStack(null);
@@ -311,29 +303,11 @@ export function DatumApp() {
   };
 
 
-  const handleApproveCriticalStep = () => {
-    setIsApproving(true);
-    setTimeout(() => { setIsApproving(false); setCriticalApproved(true); }, 450);
-  };
-
-  const handleToggleLogin = () => {
-    if (isLoggedIn) {
-      setIsLoggedIn(false);
-      setUserProfile(null);
-    } else {
-      setIsLoggedIn(true);
-      setUserProfile({ name: "apreezofficial", avatar: "https://github.com/apreezofficial.png" });
-    }
-  };
-
-  const handleToggleFigmaConnection = () => setIsFigmaConnected(!isFigmaConnected);
-
   const resetToNew = () => {
     setActiveItem(null);
     setInputValue("");
     setIsAnalyzing(false);
     setAnalysisComplete(false);
-    setCriticalApproved(false);
     setAuditData(null);
     setAuditError(null);
     setDetectedStack(null);
@@ -343,14 +317,13 @@ export function DatumApp() {
 
   const handleSelectHistory = (item: HistoryItem) => {
     setActiveItem(item.name);
-    setSourceType(item.type);
     setAuditError(null);
     setAuditData(item.auditData ?? null);
     if (item.auditData?.stack) setDetectedStack(item.auditData.stack);
     // Rebuild clean completed step list for history items
     const steps: StepItem[] = [
           { id: "resolve", icon: <GitBranch size={14} className="text-secondary" />, label: `Resolved ${item.name}`, status: "done" },
-          { id: "stack", icon: <Package size={14} className="text-secondary" />, label: `Detected project stack · ${item.auditData?.stack?.language || "TypeScript"} · ${item.auditData?.stack?.ecosystem || "React"}`, status: "done" },
+          { id: "stack", icon: <Package size={14} className="text-secondary" />, label: `Detected stack · ${item.auditData?.stack?.language ?? "unknown"}`, status: "done" },
           { id: "tree", icon: <FolderGit2 size={14} className="text-secondary" />, label: "Mapped and indexed repository source files across codebase", status: "done" },
           { id: "audit", icon: <Compass size={14} className="text-secondary" />,
             label: item.auditData ? `Analysis completed: ${item.auditData.totalFindings || 0} flaws mapped · Score ${item.auditData.healthScore}/100` : "Analysis completed",
@@ -358,22 +331,18 @@ export function DatumApp() {
       ];
     setCurrentSteps(steps);
     setAnalysisComplete(true);
-    setCriticalApproved(false);
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-bg text-text">
+    <div className="flex h-dvh w-full overflow-hidden bg-bg text-text">
       {/* 1. Collapsible Sidebar */}
       <DatumSidebar
         sidebarOpen={sidebarOpen}
         setSidebarOpen={setSidebarOpen}
         history={history}
         activeItem={activeItem}
-        isLoggedIn={isLoggedIn}
-        userProfile={userProfile}
         theme={theme}
         onToggleTheme={toggleTheme}
-        onToggleLogin={handleToggleLogin}
         onResetToNew={resetToNew}
         onSelectHistory={handleSelectHistory}
       />
@@ -385,31 +354,19 @@ export function DatumApp() {
           sidebarOpen={sidebarOpen}
           setSidebarOpen={setSidebarOpen}
           activeItem={activeItem}
-          sourceType={sourceType}
           analysisComplete={analysisComplete}
           models={models}
           selectedModelId={selectedModelId}
           onSelectModel={setSelectedModelId}
-          autopilot={autopilot}
-          setAutopilot={setAutopilot}
-          isLoggedIn={isLoggedIn}
-          userProfile={userProfile}
-          onToggleLogin={handleToggleLogin}
-          isFigmaConnected={isFigmaConnected}
-          onToggleFigmaConnection={handleToggleFigmaConnection}
         />
 
         {/* Content Area */}
         <main
-          ref={mainScrollRef}
-          onScroll={handleScroll}
-          className="flex-1 overflow-hidden relative"
+          className="flex-1 min-h-0 overflow-hidden relative"
         >
           {!activeItem ? (
             <div className="h-full overflow-y-auto">
               <HeroView
-                sourceType={sourceType}
-                setSourceType={setSourceType}
                 inputValue={inputValue}
                 setInputValue={setInputValue}
                 onStartAnalysis={handleStartAnalysis}
@@ -422,7 +379,6 @@ export function DatumApp() {
               className="h-full overflow-y-auto"
             >
               <AnalysisView
-                sourceType={sourceType}
                 activeItem={activeItem}
                 isAnalyzing={isAnalyzing}
                 analysisComplete={analysisComplete}
@@ -432,14 +388,6 @@ export function DatumApp() {
                 activeModel={activeModel}
                 auditData={auditData}
                 auditError={auditError}
-                criticalApproved={criticalApproved}
-                isApproving={isApproving}
-                isLoggedIn={isLoggedIn}
-                userProfile={userProfile}
-                isFigmaConnected={isFigmaConnected}
-                handleToggleLogin={handleToggleLogin}
-                handleToggleFigmaConnection={handleToggleFigmaConnection}
-                handleApproveCriticalStep={handleApproveCriticalStep}
                 resetToNew={resetToNew}
               />
               {folderSelection && (

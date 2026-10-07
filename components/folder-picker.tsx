@@ -79,11 +79,11 @@ export function FolderPicker({
         </button>
       </div>
 
-      <div className="max-h-72 overflow-y-auto divide-y divide-border-subtle border border-border-subtle rounded-lg">
+      <div className="max-h-[50dvh] overflow-y-auto divide-y divide-border-subtle border border-border-subtle rounded-lg">
         {selection.groups.map((g) => (
           <label
             key={g.path || "(root)"}
-            className="flex items-center gap-3 px-3 py-2 text-xs cursor-pointer hover:bg-raised"
+            className="flex items-center gap-3 px-3 py-3 text-xs cursor-pointer hover:bg-raised"
           >
             <input
               type="checkbox"
