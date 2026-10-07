@@ -2,6 +2,8 @@ export interface FolderGroup {
   /** Folder path without trailing slash; "" means files at the repo root. */
   path: string;
   files: number;
+  /** Tests, docs, examples, benchmarks: listed but not ticked by default. */
+  lowValue?: boolean;
 }
 
 /**

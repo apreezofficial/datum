@@ -15,6 +15,11 @@ Progress in the UI is real: the server streams newline-delimited JSON events (`t
 
 If a repo has more than 1,500 scannable files, Datum stops before reading anything and shows a folder picker (with file counts; likely source folders are pre-ticked). Pick folders, hit **Scan selected**, and come back to scan others afterwards. Folders bigger than the limit are split into subfolders so every choice is a manageable size. Vendored dirs (`node_modules`, `vendor`, `compiled`, `dist`, ...) are never offered.
 
+### What is skipped
+
+- **Always:** vendored, generated and build output (`node_modules`, `vendor`, `dist`, `build`, `compiled`, `third_party`, `generated`, snapshots, virtualenvs, ...), binaries, lockfiles, files over 1 MB.
+- **By default:** tests, docs, examples, demos, fixtures, benchmarks (`test/`, `__tests__/`, `docs/`, `examples/`, `*.test.*`, ...). Real code, but rarely where you want findings, and they flood reports with fake secrets. In large repos they still appear in the folder picker, tagged and unticked, so you can opt in.
+
 ### Limits (reported honestly in the result)
 
 - Every scannable file is read (highest-ranked first), within a 4-minute budget. Binaries, lockfiles, vendored/build dirs and files over 1 MB are skipped. `filesSkipped` in the result shows what wasn't read.

@@ -106,10 +106,19 @@ export async function fetchFileContent(
   }
 }
 
-const IGNORED_DIRS = /(^|\/)(node_modules|\.git|\.next|dist|build|out|coverage|vendor|compiled|third_party|target|__pycache__|\.venv|venv)\//;
+const IGNORED_DIRS =
+  /(^|\/)(node_modules|\.git|\.next|\.nuxt|\.turbo|\.cache|\.yarn|\.pnpm-store|dist|build|out|coverage|vendor|compiled|third_party|target|__pycache__|\.venv|venv|site-packages|Pods|storybook-static|__generated__|generated|__snapshots__)\//;
 const BINARY_EXT =
   /\.(png|jpe?g|gif|webp|avif|svg|ico|icns|woff2?|ttf|otf|eot|pdf|zip|gz|tgz|tar|7z|rar|mp[34]|mov|wav|ogg|webm|wasm|bin|exe|dll|so|dylib|class|jar|lock|map|snap)$/i;
 const LOCKFILES = /(^|\/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|composer\.lock|Cargo\.lock|poetry\.lock)$/;
+
+/** Real code, but rarely where you want findings: tests, docs, samples, benchmarks. Skipped unless explicitly picked. */
+const LOW_VALUE =
+  /(^|\/)(tests?|__tests__|__mocks__|e2e|cypress|spec|specs|docs?|documentation|examples?|demos?|samples?|fixtures?|__fixtures__|benchmarks?|bench|evals?|playground)\/|\.(test|spec|stories)\.[a-z]+$/i;
+
+export function isLowValue(path: string): boolean {
+  return LOW_VALUE.test(path);
+}
 
 export const MAX_FILE_BYTES = 1_000_000;
 
