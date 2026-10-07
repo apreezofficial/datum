@@ -3,6 +3,7 @@ import {
   fetchFileContent,
   fetchRepoTree,
   GitHubError,
+  isLowValue,
   isScannable,
   mapPool,
   parseRepoInput,
@@ -68,18 +69,25 @@ export async function POST(req: Request) {
           .sort((a, b) => rankFile(b.path) - rankFile(a.path));
         const repoName = `${tree.owner}/${tree.repo}`;
 
-        if (!body.folders && scannable.length > LARGE_REPO_FILES) {
+        const defaults = scannable.filter((e) => !isLowValue(e.path));
+
+        if (!body.folders && defaults.length > LARGE_REPO_FILES) {
+          // Offer every folder, but tests/docs/examples are flagged and unticked by default.
+          const groups = groupFolders(scannable.map((e) => e.path), LARGE_REPO_FILES).map((g) => ({
+            ...g,
+            lowValue: isLowValue(g.path === "" ? "x" : g.path.replace(/\/\*$/, "") + "/x"),
+          }));
           send({
             type: "select",
             repo: repoName,
             branch: tree.branch,
-            total: scannable.length,
+            total: defaults.length,
             limit: LARGE_REPO_FILES,
-            groups: groupFolders(scannable.map((e) => e.path), LARGE_REPO_FILES),
+            groups,
           });
           return;
         }
-        const toRead = body.folders ? scannable.filter((e) => inFolders(e.path, body.folders!)) : scannable;
+        const toRead = body.folders ? scannable.filter((e) => inFolders(e.path, body.folders!)) : defaults;
 
         send({
           type: "tree",

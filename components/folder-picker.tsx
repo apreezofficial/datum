@@ -18,7 +18,7 @@ function defaultPicks(groups: FolderGroup[], limit: number): Set<string> {
   const picked = new Set<string>();
   let used = 0;
   for (const g of [...groups].sort((a, b) => a.files - b.files)) {
-    if (!LIKELY_SOURCE.test(g.path) || used + g.files > limit) continue;
+    if (g.lowValue || !LIKELY_SOURCE.test(g.path) || used + g.files > limit) continue;
     picked.add(g.path);
     used += g.files;
   }
@@ -61,7 +61,7 @@ export function FolderPicker({
             {selection.repo} is large ({selection.total.toLocaleString()} files)
           </h3>
           <p className="text-xs text-secondary mt-1 leading-relaxed">
-            Pick the folders to scan. You can come back and scan others afterwards.
+            Pick the folders to scan. Tests, docs and examples are skipped unless you tick them. You can scan others afterwards.
           </p>
         </div>
       </div>
@@ -70,9 +70,9 @@ export function FolderPicker({
         <button
           type="button"
           className="hover:text-text underline"
-          onClick={() => setPicked(new Set(selection.groups.map((g) => g.path)))}
+          onClick={() => setPicked(new Set(selection.groups.filter((g) => !g.lowValue).map((g) => g.path)))}
         >
-          Select all
+          Select all code
         </button>
         <button type="button" className="hover:text-text underline" onClick={() => setPicked(new Set())}>
           Clear
@@ -92,6 +92,11 @@ export function FolderPicker({
               className="accent-[var(--tide,#2563eb)]"
             />
             <span className="font-mono text-text truncate flex-1">{g.path === "" ? "(root files)" : g.path}</span>
+            {g.lowValue && (
+              <span className="text-[10px] font-mono text-muted border border-border-subtle rounded px-1.5 py-0.5 shrink-0">
+                tests/docs
+              </span>
+            )}
             <span className="font-mono text-secondary shrink-0">{g.files.toLocaleString()} files</span>
           </label>
         ))}

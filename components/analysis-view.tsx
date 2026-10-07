@@ -237,8 +237,8 @@ const Report = React.memo(function Report({
               {data.aiNote && <p>{data.aiNote}</p>}
               {(data.filesSkipped ?? 0) > 0 && (
                 <p>
-                  {data.filesSkipped!.toLocaleString()} files were not read (binaries, lockfiles, vendored folders, files
-                  over 1 MB or outside the selected folders).
+                  {data.filesSkipped!.toLocaleString()} files were not read (binaries, lockfiles, vendored or generated folders,
+                  tests/docs/examples, files over 1 MB, or outside the selected folders).
                 </p>
               )}
             </div>
