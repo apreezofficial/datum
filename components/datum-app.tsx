@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { useTheme } from "@/lib/theme";
-import { detectRepositoryStack, StackInfo } from "@/lib/stack-detector";
+import type { StackInfo } from "@/lib/stack-detector";
+import type { ScanEvent } from "@/app/api/scan/route";
 import {
   GitBranch,
   FolderGit2,
@@ -10,7 +11,6 @@ import {
   FileCode,
   Layers,
   Compass,
-  Figma,
   ArrowDown,
 } from "lucide-react";
 
@@ -18,6 +18,7 @@ import { DatumHeader } from "@/components/datum-header";
 import { DatumSidebar } from "@/components/datum-sidebar";
 import { DatumFooter } from "@/components/datum-footer";
 import { HeroView } from "@/components/hero-view";
+import { FolderPicker, type FolderSelection } from "@/components/folder-picker";
 import { AnalysisView } from "@/components/analysis-view";
 
 import type {
@@ -56,17 +57,6 @@ const DEFAULT_MODELS: ModelOption[] = [
   },
 ];
 
-export interface RepoTreeData {
-  owner: string;
-  repo: string;
-  branch: string;
-  totalFiles: number;
-  allUiFilesCount: number;
-  allFolders?: string[];
-  uiFilesToRead: string[];
-  fullTreeSample: string[];
-}
-
 export function DatumApp() {
   const { theme, toggleTheme } = useTheme();
 
@@ -78,8 +68,8 @@ export function DatumApp() {
   const [autopilot, setAutopilot] = React.useState(false);
   const [auditData, setAuditData] = React.useState<AuditData | null>(null);
   const [auditError, setAuditError] = React.useState<string | null>(null);
+  const [folderSelection, setFolderSelection] = React.useState<FolderSelection | null>(null);
   const [detectedStack, setDetectedStack] = React.useState<StackInfo | null>(null);
-  const [loadedTreeData, setLoadedTreeData] = React.useState<RepoTreeData | null>(null);
 
   // Model selection
   const [models, setModels] = React.useState<ModelOption[]>(DEFAULT_MODELS);
@@ -165,30 +155,19 @@ export function DatumApp() {
     });
   }, []);
 
-  // Small async delay for UX pacing
-  const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-  // ─── Figma steps (static, since we can't actually query Figma) ───────────
-  const figmaSteps: StepItem[] = [
-    { id: "figma-connect", icon: <Figma size={14} className="text-secondary" />, label: `Connected to Figma File: ${activeItem || "Design System"}`, status: "done" },
-    { id: "figma-variables", icon: <Layers size={14} className="text-secondary" />, label: "Extracted 120 published Variables (Color, Spacing, Radius)", status: "done" },
-    { id: "figma-convert", icon: <Layers size={14} className="text-secondary" />, label: "Converted tokens into OKLab and canonical CSS variables", status: "done" },
-    { id: "figma-diff", icon: <Compass size={14} className="text-secondary" />, label: "Compared with codebase benchmarks: 12 token mismatches spotted", status: "done" },
-  ];
-
   // ─── Main Analysis Flow ───────────────────────────────────────────────────
-  const handleStartAnalysis = async (urlToUse?: string) => {
+  const handleStartAnalysis = async (urlToUse?: string, folders?: string[]) => {
     const rawUrl = urlToUse || inputValue;
     if (!rawUrl.trim()) return;
 
     const isFigma = rawUrl.toLowerCase().includes("figma.com");
-    setSourceType(isFigma ? "figma" : "github");
+    setSourceType("github");
 
-    let cleanName = rawUrl
-      .replace(/^https?:\/\/(www\.)?(github\.com\/|figma\.com\/file\/|figma\.com\/design\/)?/, "")
+    const cleanName = rawUrl
+      .trim()
+      .replace(/^https?:\/\/(www\.)?github\.com\//, "")
+      .replace(/\.git$/, "")
       .replace(/\/$/, "");
-
-    if (!cleanName) cleanName = isFigma ? "acme-design-system" : "shadcn/ui";
 
     // Reset everything
     setActiveItem(cleanName);
@@ -199,203 +178,138 @@ export function DatumApp() {
     setAuditError(null);
     setDetectedStack(null);
     setCurrentSteps([]);
+    if (!folders) setFolderSelection(null);
 
-    // ── FIGMA FLOW (static for now) ────────────────────────────────────────
-    if (isFigma) {
-      for (let i = 0; i < figmaSteps.length; i++) {
-        pushStep({ ...figmaSteps[i], status: "running" });
-        await pause(350);
-        updateLastStep({ status: "done" });
-      }
+    const finish = (name: string, summary: string, data?: AuditData) => {
       setIsAnalyzing(false);
       setAnalysisComplete(true);
       setHistory((prev) => [
-        { id: Math.random().toString(), name: cleanName, type: "figma", summary: "12 token mismatches" },
-        ...prev.filter((h) => h.name !== cleanName),
+        { id: Math.random().toString(), name, type: "github", summary, auditData: data },
+        ...prev.filter((h) => h.name !== name),
       ]);
+    };
+
+    if (isFigma) {
+      setAuditError("Figma links are not supported. Enter a GitHub repository as owner/repo.");
+      finish(cleanName, "Unsupported source");
       return;
     }
 
-    // ── GITHUB FLOW ────────────────────────────────────────────────────────
-
-    // STEP 1: Check if repo is accessible
     pushStep({
       id: "resolve",
       icon: <GitBranch size={14} className="text-secondary" />,
-      label: `Checking ${cleanName}...`,
+      label: `Resolving ${cleanName}...`,
       status: "running",
     });
 
-    let treeData: RepoTreeData | null = null;
-
     try {
-      const treeRes = await fetch(`/api/repo/tree?repo=${encodeURIComponent(cleanName)}`);
-      const treeJson = (await treeRes.json()) as { success: boolean; data?: RepoTreeData; error?: string };
+      const res = await fetch("/api/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repo: cleanName, model: selectedModelId, folders }),
+      });
+      if (!res.body) throw new Error("No response from scanner");
 
-      if (!treeJson.success || !treeJson.data) {
-        updateLastStep({ label: `Repository not found — ${cleanName}`, status: "done" });
-        setAuditError(treeJson.error || `"${cleanName}" could not be accessed on GitHub. It may not exist or be private.`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finalData: AuditData | null = null;
+      let failure: string | null = null;
+      let selectionRequested = false;
+
+      const handle = (e: ScanEvent) => {
+        switch (e.type) {
+          case "tree":
+            updateLastStep({
+              label: `Resolved ${e.repo}@${e.branch} — ${e.totalFiles.toLocaleString()} files, ${e.scannable.toLocaleString()} scannable${e.truncated ? " (tree truncated by GitHub)" : ""}`,
+              status: "done",
+            });
+            pushStep({
+              id: "scan",
+              icon: <FileCode size={14} className="text-secondary" />,
+              label: "Scanning files...",
+              status: "running",
+            });
+            break;
+          case "select":
+            selectionRequested = true;
+            setFolderSelection({ repo: e.repo, total: e.total, limit: e.limit, groups: e.groups });
+            updateLastStep({
+              label: `${e.repo} has ${e.total.toLocaleString()} scannable files — choose which folders to scan`,
+              status: "done",
+            });
+            break;
+          case "progress":
+            updateLastStep({
+              label: `Scanning ${e.file} (${e.scanned.toLocaleString()} / ${e.total.toLocaleString()} files · ${e.findings} findings so far)`,
+              status: "running",
+            });
+            break;
+          case "ai":
+            if (e.status === "running") {
+              updateLastStep({ label: "Static scan complete", status: "done" });
+              pushStep({
+                id: "ai",
+                icon: <Compass size={14} className="text-secondary" />,
+                label: "AI reviewing the highest-risk files...",
+                status: "running",
+              });
+            } else if (e.status === "done") {
+              updateLastStep({ label: "AI review complete", status: "done" });
+            } else {
+              updateLastStep({ label: e.note ?? "AI review skipped", status: "done" });
+            }
+            break;
+          case "result":
+            finalData = e.data;
+            break;
+          case "error":
+            failure = e.error;
+            break;
+        }
+      };
+
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let nl: number;
+        while ((nl = buffer.indexOf("\n")) >= 0) {
+          const line = buffer.slice(0, nl).trim();
+          buffer = buffer.slice(nl + 1);
+          if (line) handle(JSON.parse(line) as ScanEvent);
+        }
+      }
+
+      if (selectionRequested) {
         setIsAnalyzing(false);
-        setAnalysisComplete(true);
-        setHistory((prev) => [
-          { id: Math.random().toString(), name: cleanName, type: "github", summary: "Not found" },
-          ...prev.filter((h) => h.name !== cleanName),
-        ]);
         return;
       }
 
-      treeData = treeJson.data;
-    } catch {
-      updateLastStep({ label: `Failed to reach GitHub for ${cleanName}`, status: "done" });
-      setAuditError(`Network error while checking "${cleanName}".`);
-      setIsAnalyzing(false);
-      setAnalysisComplete(true);
-      return;
-    }
-
-    if (!treeData) {
-      setIsAnalyzing(false);
-      setAnalysisComplete(true);
-      return;
-    }
-
-    setLoadedTreeData(treeData);
-
-    updateLastStep({
-      label: `Resolved ${cleanName} — ${treeData.totalFiles.toLocaleString()} files in tree`,
-      status: "done",
-    });
-
-    // STEP 2: Detect stack from the file tree
-    pushStep({
-      id: "stack",
-      icon: <Package size={14} className="text-secondary" />,
-      label: "Detecting project stack...",
-      status: "running",
-    });
-
-    const stack = await detectRepositoryStack(cleanName, treeData.uiFilesToRead);
-    setDetectedStack(stack);
-    updateLastStep({
-      label: `Detected ${stack.language} · ${stack.ecosystem} · ${stack.stylingSystem}`,
-      status: "done",
-    });
-
-    // STEP 3: Scan all directories across the repository
-    const foldersToScan = treeData.allFolders && treeData.allFolders.length > 0
-      ? treeData.allFolders
-      : ["src", "app", "components", "styles"];
-
-    pushStep({
-      id: "folders",
-      icon: <FolderGit2 size={14} className="text-secondary" />,
-      label: `Scanning ${foldersToScan.length} directories across repository...`,
-      status: "running",
-    });
-
-    for (const folder of foldersToScan.slice(0, 10)) {
-      updateLastStep({
-        label: `Scanning directory /${folder}...`,
-        status: "running",
-      });
-      await pause(140);
-    }
-
-    updateLastStep({
-      label: `Scanned ${foldersToScan.length} directories — mapped ${treeData.allUiFilesCount} source files`,
-      status: "done",
-    });
-
-    // STEP 4: Read and parse source files (live swiping ticker on a single step)
-    // STEP 4: Read and parse source files across codebase
-    const totalFilesToRead = treeData.allUiFilesCount || treeData.uiFilesToRead.length;
-    if (totalFilesToRead > 0) {
-      pushStep({
-        id: "read-files",
-        icon: <FileCode size={14} className="text-secondary" />,
-        label: `Scanning and indexing ${totalFilesToRead.toLocaleString()} source files across codebase...`,
-        status: "running",
-      });
-
-      const samplePaths = treeData.uiFilesToRead.slice(0, Math.min(18, treeData.uiFilesToRead.length));
-      for (let i = 0; i < samplePaths.length; i++) {
-        const filePath = samplePaths[i];
-        const progressCount = Math.min(
-          totalFilesToRead,
-          Math.max(1, Math.round(((i + 1) / samplePaths.length) * totalFilesToRead))
-        );
-        updateLastStep({
-          label: `Scanning ${filePath} (${progressCount.toLocaleString()} / ${totalFilesToRead.toLocaleString()} files)...`,
-          status: "running",
-        });
-        await pause(100);
+      if (failure || !finalData) {
+        updateLastStep({ label: "Scan failed", status: "done" });
+        setAuditError(failure ?? "The scan ended without a result.");
+        finish(cleanName, "Failed");
+        return;
       }
 
-      updateLastStep({
-        label: `Parsed and indexed all ${totalFilesToRead.toLocaleString()} source files across codebase`,
+      const data: AuditData = finalData;
+      setAuditData(data);
+      if (data.stack) setDetectedStack(data.stack);
+      pushStep({
+        id: "done",
+        icon: <Layers size={14} className="text-secondary" />,
+        label: `Done: ${data.totalFindings} findings across ${data.totalFilesScanned.toLocaleString()} files · health ${data.healthScore}/100`,
         status: "done",
       });
+      finish(cleanName, `${data.totalFindings} findings`, data);
+    } catch (err) {
+      updateLastStep({ label: "Scan failed", status: "done" });
+      setAuditError(err instanceof Error ? err.message : "Network error while scanning.");
+      finish(cleanName, "Failed");
     }
-
-    // STEP 5: Deep Flaw Analysis (Security, Bugs, Genuine In-Code TODOs, Performance)
-    pushStep({
-      id: "flaws",
-      icon: <Compass size={14} className="text-secondary" />,
-      label: "Running deep flaw analysis across codebase...",
-      status: "running",
-    });
-
-    try {
-      const auditRes = await fetch("/api/groq/audit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          url: cleanName,
-          sourceType: "github",
-          model: selectedModelId,
-          branch: treeData.branch,
-          filePaths: treeData.uiFilesToRead,
-          fullTreeSample: treeData.fullTreeSample,
-        }),
-      });
-      const auditJson = await auditRes.json() as { success: boolean; data?: AuditData; error?: string };
-
-      if (auditJson.success && auditJson.data) {
-        const realData = auditJson.data;
-        setAuditData(realData);
-        if (realData.stack) setDetectedStack(realData.stack);
-        updateLastStep({
-          label: `Analysis completed: ${realData.totalFindings} flaws mapped · Score ${realData.healthScore}/100`,
-          status: "done",
-        });
-        setHistory((prev) => [
-          {
-            id: Math.random().toString(),
-            name: cleanName,
-            type: "github",
-            summary: `${realData.totalFindings} flaws mapped`,
-            auditData: realData,
-          },
-          ...prev.filter((h) => h.name !== cleanName),
-        ]);
-      } else {
-        updateLastStep({ label: "Analysis completed", status: "done" });
-        setHistory((prev) => [
-          { id: Math.random().toString(), name: cleanName, type: "github", summary: "Audited" },
-          ...prev.filter((h) => h.name !== cleanName),
-        ]);
-      }
-    } catch {
-      updateLastStep({ label: "Analysis completed", status: "done" });
-      setHistory((prev) => [
-        { id: Math.random().toString(), name: cleanName, type: "github", summary: "Audited" },
-        ...prev.filter((h) => h.name !== cleanName),
-      ]);
-    }
-
-    setIsAnalyzing(false);
-    setAnalysisComplete(true);
   };
+
 
   const handleApproveCriticalStep = () => {
     setIsApproving(true);
@@ -423,7 +337,7 @@ export function DatumApp() {
     setAuditData(null);
     setAuditError(null);
     setDetectedStack(null);
-    setLoadedTreeData(null);
+    setFolderSelection(null);
     setCurrentSteps([]);
   };
 
@@ -434,16 +348,14 @@ export function DatumApp() {
     setAuditData(item.auditData ?? null);
     if (item.auditData?.stack) setDetectedStack(item.auditData.stack);
     // Rebuild clean completed step list for history items
-    const steps: StepItem[] = item.type === "github"
-      ? [
+    const steps: StepItem[] = [
           { id: "resolve", icon: <GitBranch size={14} className="text-secondary" />, label: `Resolved ${item.name}`, status: "done" },
           { id: "stack", icon: <Package size={14} className="text-secondary" />, label: `Detected project stack · ${item.auditData?.stack?.language || "TypeScript"} · ${item.auditData?.stack?.ecosystem || "React"}`, status: "done" },
           { id: "tree", icon: <FolderGit2 size={14} className="text-secondary" />, label: "Mapped and indexed repository source files across codebase", status: "done" },
           { id: "audit", icon: <Compass size={14} className="text-secondary" />,
             label: item.auditData ? `Analysis completed: ${item.auditData.totalFindings || 0} flaws mapped · Score ${item.auditData.healthScore}/100` : "Analysis completed",
             status: "done" },
-        ]
-      : figmaSteps;
+      ];
     setCurrentSteps(steps);
     setAnalysisComplete(true);
     setCriticalApproved(false);
@@ -530,6 +442,15 @@ export function DatumApp() {
                 handleApproveCriticalStep={handleApproveCriticalStep}
                 resetToNew={resetToNew}
               />
+              {folderSelection && (
+                <div className="px-4 sm:px-6 pb-8 max-w-4xl mx-auto w-full">
+                  <FolderPicker
+                    selection={folderSelection}
+                    busy={isAnalyzing}
+                    onScan={(folders) => handleStartAnalysis(folderSelection.repo, folders)}
+                  />
+                </div>
+              )}
             </div>
           )}
         </main>
