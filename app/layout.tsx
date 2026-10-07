@@ -3,9 +3,9 @@ import "@/styles/globals.css";
 import { ThemeProvider } from "@/lib/theme";
 
 export const metadata: Metadata = {
-  title: "Datum — Design System Drift & Auto-Fix",
+  title: "Datum — Codebase Flaw Scanner",
   description:
-    "Survey any GitHub codebase or Figma file against design system benchmarks, map UI drift, and open safe autofix pull requests.",
+    "Scan a GitHub codebase for security flaws, bugs and TODOs, with the exact line and how to fix each one.",
 };
 
 export default function RootLayout({

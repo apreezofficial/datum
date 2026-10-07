@@ -6,14 +6,10 @@ import {
   PanelLeftClose,
   Plus,
   Github,
-  Figma,
-  ExternalLink,
-  LogIn,
-  LogOut,
   Moon,
   Sun,
 } from "lucide-react";
-import type { HistoryItem, UserProfile } from "@/types/datum";
+import type { HistoryItem } from "@/types/datum";
 
 interface DatumSidebarProps {
   sidebarOpen: boolean;
@@ -22,9 +18,6 @@ interface DatumSidebarProps {
   history: HistoryItem[];
   activeItem?: string | null;
   onSelectHistory: (item: HistoryItem) => void;
-  isLoggedIn: boolean;
-  userProfile: UserProfile | null;
-  onToggleLogin: () => void;
   theme: string;
   onToggleTheme: () => void;
 }
@@ -36,12 +29,13 @@ export function DatumSidebar({
   history,
   activeItem,
   onSelectHistory,
-  isLoggedIn,
-  userProfile,
-  onToggleLogin,
   theme,
   onToggleTheme,
 }: DatumSidebarProps) {
+  const closeOnMobile = () => {
+    if (window.matchMedia("(max-width: 767px)").matches) setSidebarOpen(false);
+  };
+
   return (
     <>
       {/* Mobile drawer backdrop overlay */}
@@ -60,14 +54,17 @@ export function DatumSidebar({
 
       <aside
         className={`${
-          sidebarOpen ? "translate-x-0 w-64" : "-translate-x-full md:translate-x-0 md:w-0"
+          sidebarOpen ? "translate-x-0 w-72 max-w-[85vw] md:w-64" : "-translate-x-full md:translate-x-0 w-72 md:w-0"
         } fixed md:static inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-surface transition-all duration-200 ease-in-out shrink-0 overflow-hidden shadow-2xl md:shadow-none`}
       >
         {/* Top: Logo + Toggle Sidebar */}
         <div className="flex h-14 items-center justify-between px-3.5 border-b border-border-subtle shrink-0">
           <button
             type="button"
-            onClick={onResetToNew}
+            onClick={() => {
+              onResetToNew();
+              closeOnMobile();
+            }}
             className="flex items-center gap-2 p-1 rounded hover:opacity-80 transition-opacity"
             aria-label="New session"
           >
@@ -77,8 +74,8 @@ export function DatumSidebar({
           <button
             type="button"
             onClick={() => setSidebarOpen(false)}
-            className="p-1 text-secondary hover:text-text rounded transition-colors focus:outline-none"
-            title="Close sidebar"
+            className="p-2 text-secondary hover:text-text rounded transition-colors focus:outline-none"
+            aria-label="Close sidebar"
           >
             <PanelLeftClose size={17} strokeWidth={1.5} />
           </button>
@@ -88,7 +85,10 @@ export function DatumSidebar({
         <div className="px-3 pt-2 shrink-0">
           <button
             type="button"
-            onClick={onResetToNew}
+            onClick={() => {
+              onResetToNew();
+              closeOnMobile();
+            }}
             className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-xs font-normal text-text hover:bg-raised transition-colors whitespace-nowrap"
           >
             <Plus size={15} strokeWidth={1.75} className="text-secondary shrink-0" />
@@ -107,7 +107,10 @@ export function DatumSidebar({
                 <button
                   key={item.id}
                   type="button"
-                  onClick={() => onSelectHistory(item)}
+                  onClick={() => {
+                    onSelectHistory(item);
+                    closeOnMobile();
+                  }}
                   className={`flex flex-col w-full text-left px-2.5 py-1.5 rounded-md text-xs transition-colors truncate ${
                     activeItem === item.name
                       ? "bg-raised font-medium text-text"
@@ -115,11 +118,7 @@ export function DatumSidebar({
                   }`}
                 >
                   <div className="flex items-center gap-1.5 font-medium truncate">
-                    {item.type === "github" ? (
-                      <Github size={12} className="shrink-0 text-muted" />
-                    ) : (
-                      <Figma size={12} className="shrink-0 text-muted" />
-                    )}
+                    <Github size={12} className="shrink-0 text-muted" />
                     <span className="truncate">{item.name}</span>
                   </div>
                   <span className="text-[10px] text-muted font-mono pl-4">{item.summary}</span>
@@ -129,7 +128,7 @@ export function DatumSidebar({
           ) : (
             <div className="flex flex-col items-center justify-center h-full text-center px-4">
               <p className="text-xs text-muted leading-relaxed">
-                Sign in to save and sync your codebase flaw analyses.
+                Scans from this session will appear here.
               </p>
             </div>
           )}
@@ -137,44 +136,13 @@ export function DatumSidebar({
 
         {/* Bottom User Profile + Light/Dark Mode Switcher */}
         <div className="flex items-center justify-between p-3 border-t border-border-subtle shrink-0">
-          {isLoggedIn ? (
-            <div className="flex items-center gap-2.5 overflow-hidden">
-              <div className="relative">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={userProfile?.avatar}
-                  alt={userProfile?.name}
-                  className="h-6 w-6 rounded-full object-cover shrink-0"
-                />
-                <span className="absolute bottom-0 right-0 h-1.5 w-1.5 rounded-full bg-emerald-500 ring-1 ring-surface" />
-              </div>
-              <div className="truncate">
-                <p className="text-xs font-medium text-text truncate">{userProfile?.name}</p>
-              </div>
-              <button
-                type="button"
-                onClick={onToggleLogin}
-                className="text-muted hover:text-peak ml-1 shrink-0"
-                title="Sign out"
-              >
-                <LogOut size={13} />
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={onToggleLogin}
-              className="flex items-center gap-2 text-secondary hover:text-text transition-colors focus:outline-none whitespace-nowrap"
-            >
-              <LogIn size={15} strokeWidth={1.5} className="shrink-0" />
-              <span className="whitespace-nowrap">Sign in</span>
-            </button>
-          )}
+          <span className="text-[11px] font-mono text-muted">Datum</span>
 
           <button
             type="button"
             onClick={onToggleTheme}
-            className="p-1 text-secondary hover:text-text rounded transition-colors focus:outline-none shrink-0"
+            className="p-2 text-secondary hover:text-text rounded transition-colors focus:outline-none shrink-0"
+            aria-label="Toggle theme"
             title={`Switch to ${theme === "light" ? "dark" : "light"} mode`}
           >
             {theme === "light" ? <Moon size={15} strokeWidth={1.5} /> : <Sun size={15} strokeWidth={1.5} />}

@@ -1,4 +1,4 @@
-import { detectRepositoryStack } from "@/lib/stack-detector";
+import { detectStack } from "@/lib/stack-detector";
 import {
   fetchFileContent,
   fetchRepoTree,
@@ -109,17 +109,14 @@ export async function POST(req: Request) {
             contents.set(entry.path, text);
           }
           const now = Date.now();
-          if (now - lastSent > 150 || scanned === toRead.length) {
+          if (now - lastSent > 250 || scanned === toRead.length) {
             lastSent = now;
             send({ type: "progress", scanned, total: toRead.length, file: entry.path, findings: findings.length });
           }
         });
 
         const filesSkipped = tree.entries.length - scanned;
-        const stack = await detectRepositoryStack(
-          repoName,
-          tree.entries.map((e) => e.path)
-        );
+        const stack = detectStack(tree.entries.map((e) => e.path));
 
         // AI pass over the files most likely to hold real problems.
         let aiNote: string | undefined;
