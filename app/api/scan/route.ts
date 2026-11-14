@@ -102,24 +102,29 @@ export async function POST(req: Request) {
         const findings: AuditFinding[] = [];
         const todos: Array<{ file: string; line: number; text: string }> = [];
         const contents = new Map<string, string>();
+        // `scanned` counts files actually read and checked; failed or binary reads are not counted.
         let scanned = 0;
+        // `processed` counts every attempted file so progress reaches the total even when some reads fail.
+        let processed = 0;
         let lastSent = 0;
 
         await mapPool(toRead, CONCURRENCY, async (entry) => {
           if (Date.now() - started > TIME_BUDGET_MS || req.signal.aborted) return;
           const text = await fetchFileContent(tree, entry.path, req.signal);
-          scanned++;
-          if (text === null || text.includes("\u0000")) return;
-          const r = scanFile(entry.path, text);
-          findings.push(...r.findings);
-          todos.push(...r.todos);
-          if (r.findings.some((f) => f.category !== "todo") || rankFile(entry.path) >= 150) {
-            contents.set(entry.path, text);
+          processed++;
+          if (text !== null && !text.includes("\u0000")) {
+            scanned++;
+            const r = scanFile(entry.path, text);
+            findings.push(...r.findings);
+            todos.push(...r.todos);
+            if (r.findings.some((f) => f.category !== "todo") || rankFile(entry.path) >= 150) {
+              contents.set(entry.path, text);
+            }
           }
           const now = Date.now();
-          if (now - lastSent > 250 || scanned === toRead.length) {
+          if (now - lastSent > 250 || processed === toRead.length) {
             lastSent = now;
-            send({ type: "progress", scanned, total: toRead.length, file: entry.path, findings: findings.length });
+            send({ type: "progress", scanned: processed, total: toRead.length, file: entry.path, findings: findings.length });
           }
         });
 
@@ -145,8 +150,7 @@ export async function POST(req: Request) {
             .sort(
               (a, b) =>
                 Number(flagged.has(b.path)) - Number(flagged.has(a.path)) || rankFile(b.path) - rankFile(a.path)
-            )
-            ;
+            );
           try {
             const batches: Array<typeof candidates> = [];
             for (let i = 0; i < candidates.length && batches.length < AI_MAX_BATCHES; i += AI_BATCH_FILES) {

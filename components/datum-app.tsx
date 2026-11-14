@@ -74,7 +74,7 @@ export function DatumApp() {
   const [models, setModels] = React.useState<ModelOption[]>(DEFAULT_MODELS);
   const [selectedModelId, setSelectedModelId] = React.useState("openai/gpt-oss-120b");
 
-  // Survey state
+  // Scan state
   const [inputValue, setInputValue] = React.useState("");
   const [activeItem, setActiveItem] = React.useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = React.useState(false);

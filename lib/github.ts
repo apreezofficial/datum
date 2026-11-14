@@ -31,7 +31,7 @@ export class GitHubError extends Error {
 export function parseRepoInput(input: string): RepoRef | null {
   const cleaned = input
     .trim()
-    .replace(/^https?:\/\/(www\.)?github\.com\//i, "")
+    .replace(/^(https?:\/\/)?(www\.)?github\.com\//i, "")
     .replace(/\.git$/i, "")
     .replace(/^\/+|\/+$/g, "");
   const parts = cleaned.split("/");
